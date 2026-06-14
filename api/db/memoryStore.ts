@@ -129,9 +129,12 @@ export interface Vehicle {
   fuel_level: number
   status: 'idle' | 'in_transit' | 'maintenance'
   driver_id?: string
+  driver_name?: string
   current_lat?: number
   current_lng?: number
   current_address?: string
+  current_task_id?: string
+  estimated_arrival_time?: string
 }
 
 export interface VehicleTask {
@@ -788,7 +791,7 @@ export const vehicleTasks = {
 
 export const notifications = {
   ...notificationsStore,
-  async getAll(filters?: { type?: string; isRead?: number; recipientId?: string }): Promise<Notification[]> {
+  async getAll(filters?: { type?: string; isRead?: number; recipientId?: string; keyword?: string }): Promise<Notification[]> {
     let list = await notificationsStore.getAll()
     if (filters?.type) {
       list = list.filter((n) => n.type === filters.type)
@@ -798,6 +801,14 @@ export const notifications = {
     }
     if (filters?.recipientId) {
       list = list.filter((n) => n.recipient_id === filters.recipientId)
+    }
+    if (filters?.keyword) {
+      const kw = filters.keyword.toLowerCase()
+      list = list.filter(
+        (n) =>
+          n.title.toLowerCase().includes(kw) ||
+          n.content.toLowerCase().includes(kw),
+      )
     }
     return list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
   },

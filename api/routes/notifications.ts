@@ -58,13 +58,17 @@ const mockNotificationTemplates: Array<Omit<Notification, 'id' | 'recipient_id' 
 
 router.get('/', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { type, read } = req.query
-    const filters: { type?: string; isRead?: number } = {}
+    const { type, read, is_read, keyword } = req.query
+    const filters: { type?: string; isRead?: number; keyword?: string } = {}
     if (type && typeof type === 'string') {
       filters.type = type
     }
-    if (read !== undefined && read !== null) {
-      filters.isRead = read === 'true' || read === '1' ? 1 : 0
+    const readParam = read !== undefined && read !== null ? read : is_read
+    if (readParam !== undefined && readParam !== null) {
+      filters.isRead = readParam === 'true' || readParam === '1' ? 1 : 0
+    }
+    if (keyword && typeof keyword === 'string') {
+      filters.keyword = keyword
     }
     const list = await notifications.getAll(filters)
     const transformedList = list.map(item => transformNotification(item))

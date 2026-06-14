@@ -175,11 +175,12 @@ router.put('/:id/verify', async (req: Request, res: Response): Promise<void> => 
     const updated = await receipts.getById(id)
 
     if (!allValid) {
+      const issuesText = issues.map((issue, idx) => `${idx + 1}. ${issue}`).join('\n')
       await createNotification(
         'receipt',
         'high',
         '遗体接收校验不通过，需要退回补正',
-        `${receipt.deceased_name} 的接收申请校验不通过，存在 ${issues.length} 个问题需要处理。`,
+        `${receipt.deceased_name} 的接收申请校验不通过，存在以下 ${issues.length} 个问题需要补正：\n${issuesText}`,
         'dispatcher',
         id,
       )
@@ -187,7 +188,7 @@ router.put('/:id/verify', async (req: Request, res: Response): Promise<void> => 
         'receipt',
         'normal',
         '您提交的接收申请需要补充材料',
-        `您提交的 ${receipt.deceased_name} 的接收申请需要补充材料，请及时处理。`,
+        `您提交的 ${receipt.deceased_name} 的接收申请需要补充以下材料：\n${issuesText}\n请及时补正后重新提交。`,
         'family',
         id,
       )

@@ -45,7 +45,16 @@ router.get('/tasks', async (req: Request, res: Response): Promise<void> => {
     const status = req.query.status as string
     const filters = status ? { status } : undefined
     const tasks = await cremationTasks.getAll(filters)
-    const transformedTasks = tasks.map(item => transformCremationTask(item))
+    const transformedTasks = await Promise.all(
+      tasks.map(async (item) => {
+        const receipt = await receipts.getById(item.receipt_id)
+        const furnace = item.furnace_id ? await cremationFurnaces.getById(item.furnace_id) : undefined
+        return transformCremationTask(item, {
+          deceasedName: receipt?.deceased_name || '',
+          furnaceName: furnace?.name,
+        })
+      }),
+    )
     res.json({
       success: true,
       data: transformedTasks,
@@ -132,7 +141,16 @@ router.post('/tasks/generate-queue', async (req: Request, res: Response): Promis
       furnaceIndex++
     }
 
-    const transformedTasks = createdTasks.map(item => transformCremationTask(item))
+    const transformedTasks = await Promise.all(
+      createdTasks.map(async (item) => {
+        const receipt = pendingReceipts.find((r) => r.id === item.receipt_id)
+        const furnace = item.furnace_id ? await cremationFurnaces.getById(item.furnace_id) : undefined
+        return transformCremationTask(item, {
+          deceasedName: receipt?.deceased_name || '',
+          furnaceName: furnace?.name,
+        })
+      }),
+    )
     res.status(201).json({
       success: true,
       data: transformedTasks,
@@ -229,10 +247,15 @@ router.put('/tasks/:id/start', async (req: Request, res: Response): Promise<void
     })
 
     const updated = await cremationTasks.getById(id)
+    const receipt = await receipts.getById(updated!.receipt_id)
+    const updatedFurnace = updated!.furnace_id ? await cremationFurnaces.getById(updated!.furnace_id) : undefined
 
     res.json({
       success: true,
-      data: transformCremationTask(updated!),
+      data: transformCremationTask(updated!, {
+        deceasedName: receipt?.deceased_name || '',
+        furnaceName: updatedFurnace?.name,
+      }),
       message: '火化任务已开始',
     })
   } catch (error) {
@@ -292,10 +315,15 @@ router.put('/tasks/:id/complete', async (req: Request, res: Response): Promise<v
     }
 
     const updated = await cremationTasks.getById(id)
+    const receipt = await receipts.getById(updated!.receipt_id)
+    const updatedFurnace = updated!.furnace_id ? await cremationFurnaces.getById(updated!.furnace_id) : undefined
 
     res.json({
       success: true,
-      data: transformCremationTask(updated!),
+      data: transformCremationTask(updated!, {
+        deceasedName: receipt?.deceased_name || '',
+        furnaceName: updatedFurnace?.name,
+      }),
       message: '火化任务已完成',
     })
   } catch (error) {
@@ -334,10 +362,15 @@ router.post('/tasks/:id/remind', async (req: Request, res: Response): Promise<vo
     }
 
     if (!isOverdue) {
+      const receipt = await receipts.getById(task.receipt_id)
+      const furnace = task.furnace_id ? await cremationFurnaces.getById(task.furnace_id) : undefined
       res.json({
         success: true,
         data: {
-          task: transformCremationTask(task),
+          task: transformCremationTask(task, {
+            deceasedName: receipt?.deceased_name || '',
+            furnaceName: furnace?.name,
+          }),
           reminded: false,
           message: '任务未超时，无需催办',
         },
@@ -352,11 +385,16 @@ router.post('/tasks/:id/remind', async (req: Request, res: Response): Promise<vo
     })
 
     const updated = await cremationTasks.getById(id)
+    const receipt = await receipts.getById(updated!.receipt_id)
+    const furnace = updated!.furnace_id ? await cremationFurnaces.getById(updated!.furnace_id) : undefined
 
     res.json({
       success: true,
       data: {
-        task: transformCremationTask(updated!),
+        task: transformCremationTask(updated!, {
+          deceasedName: receipt?.deceased_name || '',
+          furnaceName: furnace?.name,
+        }),
         reminded: true,
         overdueCount: updated?.overdue || 0,
       },
@@ -425,7 +463,16 @@ router.put('/tasks/reorder', async (req: Request, res: Response): Promise<void> 
       .filter((t) => orders.some((o) => o.id === t.id))
       .sort((a, b) => a.queue_position - b.queue_position)
 
-    const transformedReordered = reordered.map(item => transformCremationTask(item))
+    const transformedReordered = await Promise.all(
+      reordered.map(async (item) => {
+        const receipt = await receipts.getById(item.receipt_id)
+        const furnace = item.furnace_id ? await cremationFurnaces.getById(item.furnace_id) : undefined
+        return transformCremationTask(item, {
+          deceasedName: receipt?.deceased_name || '',
+          furnaceName: furnace?.name,
+        })
+      }),
+    )
     res.json({
       success: true,
       data: transformedReordered,

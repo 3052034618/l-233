@@ -478,8 +478,8 @@ function transformNicheMatchResultResponse(data: unknown): NicheMatchResult {
   return {
     ...niche,
     remainingYears: (converted.remainingYears as number) || 20,
-    score: converted.score as number,
-    matchReasons: converted.matchReasons as string[],
+    score: (converted.score ?? converted.matchScore) as number,
+    matchReasons: (converted.matchReasons as string[]) || [],
   }
 }
 
@@ -523,6 +523,25 @@ function transformVehicleResponse(data: unknown): Vehicle {
 
 function transformVehicleTaskResponse(data: unknown): VehicleTask {
   const converted = convertKeysToCamelCase<Record<string, unknown>>(data)
+
+  let origin = converted.origin as VehicleTask['origin']
+  if (!origin && (converted.originAddress || converted.originLat || converted.originLng)) {
+    origin = {
+      address: (converted.originAddress as string) || '',
+      lat: (converted.originLat as number) || 0,
+      lng: (converted.originLng as number) || 0,
+    }
+  }
+
+  let destination = converted.destination as VehicleTask['destination']
+  if (!destination && (converted.destAddress || converted.destLat || converted.destLng)) {
+    destination = {
+      address: (converted.destAddress as string) || '',
+      lat: (converted.destLat as number) || 0,
+      lng: (converted.destLng as number) || 0,
+    }
+  }
+
   return {
     id: converted.id as string,
     vehicleId: converted.vehicleId as string,
@@ -531,8 +550,8 @@ function transformVehicleTaskResponse(data: unknown): VehicleTask {
     driverName: converted.driverName as string,
     receiptId: converted.receiptId as string,
     taskType: converted.taskType as 'pickup' | 'transfer' | 'delivery',
-    origin: converted.origin as VehicleTask['origin'],
-    destination: converted.destination as VehicleTask['destination'],
+    origin,
+    destination,
     scheduledTime: converted.scheduledTime as string,
     estimatedDuration: converted.estimatedDuration as number,
     distanceKm: converted.distanceKm as number,
@@ -545,15 +564,65 @@ function transformVehicleTaskResponse(data: unknown): VehicleTask {
 }
 
 function transformDispatchSuggestionResponse(data: unknown): DispatchSuggestion {
-  return convertKeysToCamelCase<DispatchSuggestion>(data)
+  const converted = convertKeysToCamelCase<Record<string, unknown>>(data)
+  return {
+    vehicleId: converted.id as string,
+    vehiclePlate: converted.plateNo as string,
+    driverName: (converted.driverName as string) || '',
+    distanceKm: (converted.distanceToOrigin ?? converted.distanceKm) as number,
+    estimatedArrival: (converted.estimatedArrival as string) || '',
+    currentLoad: converted.currentLoad as number,
+    score: converted.score as number,
+  }
 }
 
 function transformDailyReportResponse(data: unknown): DailyReport {
   const converted = convertKeysToCamelCase<Record<string, unknown>>(data)
+  const summary = (converted.summary || {}) as Record<string, unknown>
+  const farewellReservations = (converted.farewellReservations || []) as unknown[]
+  const cremationTasks = (converted.cremationTasks || []) as unknown[]
+  const vehicleTasks = (converted.vehicleTasks || []) as unknown[]
+
+  const farewellHalls: DailyReport['statistics']['farewellHalls'] = []
+  const hallMap = new Map<string, number>()
+  farewellReservations.forEach((r: any) => {
+    const hallId = r.hallId || r.hall_id
+    const hallName = r.hallName || r.hall_name
+    if (hallId) {
+      hallMap.set(hallId, (hallMap.get(hallId) || 0) + 1)
+      if (!farewellHalls.find((h) => h.hallId === hallId)) {
+        farewellHalls.push({
+          hallId,
+          hallName: hallName || hallId,
+          usageRate: 0,
+          reservations: 0,
+        })
+      }
+    }
+  })
+  farewellHalls.forEach((h) => {
+    h.reservations = hallMap.get(h.hallId) || 0
+  })
+
+  const cremationTotal = (summary.cremationCount as number) || cremationTasks.length
+  const cremationCompleted = (summary.cremationCompleted as number) || 0
+
   return {
     date: converted.date as string,
     area: converted.area as string,
-    statistics: converted.statistics as DailyReport['statistics'],
+    statistics: {
+      receiptCount: (summary.receiptCount as number) || 0,
+      embalmingCompleted: (summary.embalmingCompleted as number) || 0,
+      embalmingTotal: (summary.embalmingCount as number) || 0,
+      farewellHalls,
+      cremationTotal,
+      cremationCompleted,
+      cremationRate: cremationTotal > 0 ? (cremationCompleted / cremationTotal) * 100 : 0,
+      vehicleTotal: (summary.vehicleTaskCount as number) || vehicleTasks.length,
+      vehicleOnTime: (summary.vehicleTaskCompleted as number) || 0,
+      vehicleOnTimeRate: 0,
+      storageNew: 0,
+    },
   }
 }
 
@@ -821,8 +890,8 @@ export const storageApi = {
       receipt_id: params.receiptId,
       type: params.type,
     }
-    const response: ApiResponse<unknown[]> = await api.get('/storage/match', { params: requestParams })
-    return response.data.map((item) => transformNicheMatchResultResponse(item))
+    const response: ApiResponse<{ receipt: unknown; matches: unknown[] }> = await api.get('/storage/niches/match', { params: requestParams })
+    return response.data.matches.map((item) => transformNicheMatchResultResponse(item))
   },
   createContract: async (data: {
     nicheId: string
@@ -1000,10 +1069,15 @@ export const reportApi = {
 }
 
 export const notificationApi = {
-  getList: async (params?: { type?: string; read?: boolean }): Promise<Notification[]> => {
-    const requestParams = {
+  getList: async (params?: { type?: string; read?: boolean; keyword?: string }): Promise<Notification[]> => {
+    const requestParams: Record<string, unknown> = {
       type: params?.type,
-      is_read: params?.read !== undefined ? (params.read ? 1 : 0) : undefined,
+    }
+    if (params?.read !== undefined) {
+      requestParams.read = params.read ? 'true' : 'false'
+    }
+    if (params?.keyword) {
+      requestParams.keyword = params.keyword
     }
     const response: ApiResponse<unknown[]> = await api.get('/notifications', { params: requestParams })
     return response.data.map((item) => transformNotificationResponse(item))

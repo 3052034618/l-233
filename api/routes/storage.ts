@@ -99,9 +99,10 @@ router.get('/niches/map', async (req: Request, res: Response): Promise<void> => 
   }
 })
 
-router.get('/match', async (req: Request, res: Response): Promise<void> => {
+router.get('/niches/match', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { receiptId, type } = req.query
+    const receiptId = (req.query.receiptId || req.query.receipt_id) as string
+    const type = req.query.type as string
 
     if (!receiptId) {
       res.status(400).json({
@@ -183,6 +184,39 @@ router.get('/match', async (req: Request, res: Response): Promise<void> => {
       success: false,
       data: null,
       message: `智能匹配失败: ${(error as Error).message}`,
+    })
+  }
+})
+
+router.get('/contracts', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { status } = req.query
+    const filters: { status?: string } = {}
+    if (status) filters.status = status as string
+
+    const contracts = await storageContracts.getAll(filters)
+
+    const enrichedContracts = await Promise.all(
+      contracts.map(async (contract) => {
+        const receipt = await receipts.getById(contract.receipt_id)
+        const niche = await storageNiches.getById(contract.niche_id)
+        return transformStorageContract(contract, {
+          deceasedName: receipt?.deceased_name,
+          nicheInfo: niche ? transformStorageNiche(niche) : null,
+        })
+      }),
+    )
+
+    res.json({
+      success: true,
+      data: enrichedContracts,
+      message: '获取合同列表成功',
+    })
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      data: null,
+      message: `获取合同列表失败: ${(error as Error).message}`,
     })
   }
 })
@@ -273,10 +307,14 @@ router.post('/contracts', async (req: Request, res: Response): Promise<void> => 
     await storageNiches.update(niche_id, { status: 'occupied' })
 
     const created = await storageContracts.getById(id)
+    const createdNiche = await storageNiches.getById(niche_id)
 
     res.status(201).json({
       success: true,
-      data: transformStorageContract(created!),
+      data: transformStorageContract(created!, {
+        deceasedName: receipt.deceased_name,
+        nicheInfo: createdNiche ? transformStorageNiche(createdNiche) : null,
+      }),
       message: '合同创建成功',
     })
   } catch (error) {
@@ -313,14 +351,7 @@ router.get('/contracts/:id/certificate', async (req: Request, res: Response): Pr
       familyName: contract.family_name,
       familyPhone: contract.family_phone,
       nicheInfo: niche
-        ? {
-            id: niche.id,
-            area: niche.area,
-            row: niche.row_num,
-            col: niche.col_num,
-            level: niche.level_num,
-            type: niche.type,
-          }
+        ? transformStorageNiche(niche)
         : null,
       startDate: contract.start_date,
       endDate: contract.end_date,

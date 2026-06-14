@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express'
-import { vehicles, vehicleTasks, type Vehicle, type VehicleTask } from '../db/index.js'
+import { vehicles, vehicleTasks, users, type Vehicle, type VehicleTask } from '../db/index.js'
 import { transformVehicle, transformVehicleTask, transformToCamel } from '../utils/transform.js'
 
 const router = Router()
@@ -90,7 +90,10 @@ router.get('/:id/track', async (req: Request, res: Response): Promise<void> => {
 
 router.get('/dispatch-suggest', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { originLat, originLng, destLat, destLng } = req.query
+    const originLat = (req.query.originLat || req.query.origin_lat) as string
+    const originLng = (req.query.originLng || req.query.origin_lng) as string
+    const destLat = (req.query.destLat || req.query.dest_lat) as string
+    const destLng = (req.query.destLng || req.query.dest_lng) as string
     if (!originLat || !originLng || !destLat || !destLng) {
       res.status(400).json({
         success: false,
@@ -113,31 +116,59 @@ router.get('/dispatch-suggest', async (req: Request, res: Response): Promise<voi
     }
     const allVehicles = await vehicles.getAll()
     const totalDistance = haversineDistance(oLat, oLng, dLat, dLng)
+
+    let maxDistance = 0
+    for (const v of allVehicles) {
+      const vLat = v.current_lat ?? 0
+      const vLng = v.current_lng ?? 0
+      const dist = haversineDistance(vLat, vLng, oLat, oLng)
+      if (dist > maxDistance) maxDistance = dist
+    }
+
     const scored = allVehicles.map((v: Vehicle) => {
       const vLat = v.current_lat ?? 0
       const vLng = v.current_lng ?? 0
       const distanceToOrigin = haversineDistance(vLat, vLng, oLat, oLng)
-      let score = 0
-      if (v.status === 'idle') {
-        score += 50
-      } else if (v.status === 'in_transit') {
-        score += 10
-      }
-      if (distanceToOrigin <= 5) {
-        score += 30
-      } else if (distanceToOrigin <= 15) {
-        score += 20
-      } else if (distanceToOrigin <= 30) {
-        score += 10
+
+      let distanceScore = 0
+      if (maxDistance > 0) {
+        distanceScore = (1 - distanceToOrigin / maxDistance) * 50
       } else {
-        score += 5
+        distanceScore = 50
       }
-      if (v.fuel_level >= 50) {
-        score += 10
+
+      let fuelScore = 0
+      if (v.fuel_level >= 80) {
+        fuelScore = 20
+      } else if (v.fuel_level >= 50) {
+        fuelScore = 15
       } else if (v.fuel_level >= 20) {
-        score += 5
+        fuelScore = 10
+      } else {
+        fuelScore = 5
       }
-      score += Math.max(0, 10 - distanceToOrigin / 5)
+
+      let loadScore = 0
+      const loadRatio = v.capacity > 0 ? v.current_load / v.capacity : 0
+      if (loadRatio <= 0.3) {
+        loadScore = 15
+      } else if (loadRatio <= 0.6) {
+        loadScore = 10
+      } else if (loadRatio <= 0.9) {
+        loadScore = 5
+      } else {
+        loadScore = 0
+      }
+
+      let statusScore = 0
+      if (v.status === 'idle') {
+        statusScore = 15
+      } else if (v.status === 'in_transit') {
+        statusScore = 5
+      }
+
+      const score = distanceScore + fuelScore + loadScore + statusScore
+
       return {
         ...transformVehicle(v),
         distanceToOrigin: Number(distanceToOrigin.toFixed(2)),
@@ -156,6 +187,41 @@ router.get('/dispatch-suggest', async (req: Request, res: Response): Promise<voi
       success: false,
       data: null,
       message: error instanceof Error ? error.message : '获取调度推荐失败',
+    })
+  }
+})
+
+router.get('/tasks', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { status, driverId, vehicleId } = req.query
+    const filters: { status?: string; driverId?: string; vehicleId?: string } = {}
+    if (status && typeof status === 'string') filters.status = status
+    if (driverId && typeof driverId === 'string') filters.driverId = driverId
+    if (vehicleId && typeof vehicleId === 'string') filters.vehicleId = vehicleId
+
+    const tasks = await vehicleTasks.getAll(filters)
+
+    const enrichedTasks = await Promise.all(
+      tasks.map(async (task) => {
+        const vehicle = await vehicles.getById(task.vehicle_id)
+        const driver = task.driver_id ? await users.getById(task.driver_id) : null
+        return transformVehicleTask(task, {
+          plateNo: vehicle?.plate_no,
+          driverName: driver?.name,
+        })
+      }),
+    )
+
+    res.json({
+      success: true,
+      data: enrichedTasks,
+      message: '获取任务列表成功',
+    })
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      data: null,
+      message: error instanceof Error ? error.message : '获取任务列表失败',
     })
   }
 })
@@ -194,13 +260,24 @@ router.post('/tasks', async (req: Request, res: Response): Promise<void> => {
       track_log: body.track_log,
     }
     await vehicleTasks.create(taskData)
+
+    const vehicle = await vehicles.getById(taskData.vehicle_id)
+    const driver = taskData.driver_id ? await users.getById(taskData.driver_id) : null
+
     if (taskData.status === 'in_progress') {
-      await vehicles.update(taskData.vehicle_id, { status: 'in_transit' })
+      await vehicles.update(taskData.vehicle_id, {
+        status: 'in_transit',
+        current_task_id: id,
+      })
     }
+
     const created = await vehicleTasks.getById(id)
     res.json({
       success: true,
-      data: transformVehicleTask(created!),
+      data: transformVehicleTask(created!, {
+        plateNo: vehicle?.plate_no,
+        driverName: driver?.name,
+      }),
       message: '创建出车任务成功',
     })
   } catch (error) {
@@ -244,14 +321,25 @@ router.put('/tasks/:id/status', async (req: Request, res: Response): Promise<voi
     }
     await vehicleTasks.update(id, { status: status as VehicleTask['status'] })
     if (status === 'in_progress') {
-      await vehicles.update(task.vehicle_id, { status: 'in_transit' })
+      await vehicles.update(task.vehicle_id, {
+        status: 'in_transit',
+        current_task_id: id,
+      })
     } else if (status === 'completed') {
-      await vehicles.update(task.vehicle_id, { status: 'idle' })
+      await vehicles.update(task.vehicle_id, {
+        status: 'idle',
+        current_task_id: undefined,
+      })
     }
     const updated = await vehicleTasks.getById(id)
+    const vehicle = await vehicles.getById(task.vehicle_id)
+    const driver = task.driver_id ? await users.getById(task.driver_id) : null
     res.json({
       success: true,
-      data: transformVehicleTask(updated!),
+      data: transformVehicleTask(updated!, {
+        plateNo: vehicle?.plate_no,
+        driverName: driver?.name,
+      }),
       message: '更新任务状态成功',
     })
   } catch (error) {

@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express'
 import {
   farewellHalls,
   farewellReservations,
+  receipts,
   type FarewellHall,
   type FarewellReservation,
 } from '../db/index.js'
@@ -60,6 +61,35 @@ router.get('/halls/:id/schedule', async (req: Request, res: Response): Promise<v
   try {
     const { id } = req.params
     const date = parseDateParam(req.query.date as string)
+
+    if (id === 'all') {
+      const allHalls = await farewellHalls.getAll()
+      const allReservations: unknown[] = []
+      for (const hall of allHalls) {
+        const reservations = await farewellReservations.getByHallIdAndDate(hall.id, date)
+        const transformed = await Promise.all(
+          reservations.map(async (item) => {
+            const receipt = await receipts.getById(item.receipt_id)
+            return transformFarewellReservation(item, {
+              hallName: hall.name,
+              deceasedName: receipt?.deceased_name || '',
+            })
+          }),
+        )
+        allReservations.push(...transformed)
+      }
+      res.json({
+        success: true,
+        data: {
+          hall: null,
+          date,
+          reservations: allReservations,
+        },
+        message: '获取当日排程成功',
+      })
+      return
+    }
+
     const hall = await farewellHalls.getById(id)
     if (!hall) {
       res.status(404).json({
@@ -70,7 +100,15 @@ router.get('/halls/:id/schedule', async (req: Request, res: Response): Promise<v
       return
     }
     const reservations = await farewellReservations.getByHallIdAndDate(id, date)
-    const transformedReservations = reservations.map(item => transformFarewellReservation(item))
+    const transformedReservations = await Promise.all(
+      reservations.map(async (item) => {
+        const receipt = await receipts.getById(item.receipt_id)
+        return transformFarewellReservation(item, {
+          hallName: hall.name,
+          deceasedName: receipt?.deceased_name || '',
+        })
+      }),
+    )
     res.json({
       success: true,
       data: {
@@ -91,9 +129,9 @@ router.get('/halls/:id/schedule', async (req: Request, res: Response): Promise<v
 
 router.get('/suggest', async (req: Request, res: Response): Promise<void> => {
   try {
-    const attendeeCount = parseInt(req.query.attendeeCount as string, 10) || 0
-    const durationMinutes = parseInt(req.query.durationMinutes as string, 10) || 60
-    const preferredTime = req.query.preferredTime as string
+    const attendeeCount = parseInt((req.query.attendeeCount || req.query.attendee_count) as string, 10) || 0
+    const durationMinutes = parseInt((req.query.durationMinutes || req.query.duration_minutes) as string, 10) || 60
+    const preferredTime = (req.query.preferredTime || req.query.preferred_time) as string
 
     if (!attendeeCount || attendeeCount <= 0) {
       res.status(400).json({
@@ -283,10 +321,14 @@ router.post('/reservations', async (req: Request, res: Response): Promise<void> 
 
     await farewellReservations.create(reservation)
     const created = await farewellReservations.getById(id)
+    const receipt = await receipts.getById(receipt_id)
 
     res.status(201).json({
       success: true,
-      data: transformFarewellReservation(created!),
+      data: transformFarewellReservation(created!, {
+        hallName: hall.name,
+        deceasedName: receipt?.deceased_name || '',
+      }),
       message: '预约创建成功',
     })
   } catch (error) {
@@ -375,10 +417,16 @@ router.put('/reservations/:id', async (req: Request, res: Response): Promise<voi
 
     await farewellReservations.update(id, updateData)
     const updated = await farewellReservations.getById(id)
+    const updatedHallId = updateData.hall_id || existing.hall_id
+    const updatedHall = await farewellHalls.getById(updatedHallId)
+    const receipt = await receipts.getById(updated!.receipt_id)
 
     res.json({
       success: true,
-      data: transformFarewellReservation(updated!),
+      data: transformFarewellReservation(updated!, {
+        hallName: updatedHall?.name,
+        deceasedName: receipt?.deceased_name || '',
+      }),
       message: '预约修改成功',
     })
   } catch (error) {
@@ -406,10 +454,15 @@ router.delete('/reservations/:id', async (req: Request, res: Response): Promise<
 
     await farewellReservations.update(id, { status: 'cancelled' })
     const cancelled = await farewellReservations.getById(id)
+    const hall = await farewellHalls.getById(cancelled!.hall_id)
+    const receipt = await receipts.getById(cancelled!.receipt_id)
 
     res.json({
       success: true,
-      data: transformFarewellReservation(cancelled!),
+      data: transformFarewellReservation(cancelled!, {
+        hallName: hall?.name,
+        deceasedName: receipt?.deceased_name || '',
+      }),
       message: '预约已取消',
     })
   } catch (error) {

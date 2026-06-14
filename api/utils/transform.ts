@@ -318,8 +318,51 @@ export function transformVehicle(vehicle: Vehicle): {
   }
 }
 
-export function transformVehicleTask(task: VehicleTask): unknown {
-  return transformToCamel<Record<string, any>>(task)
+export function transformVehicleTask(task: VehicleTask, extra?: { plateNo?: string; driverName?: string }): {
+  id: string
+  vehicleId: string
+  plateNo?: string
+  driverId: string
+  driverName?: string
+  receiptId?: string
+  taskType: string
+  originAddress: string
+  originLat: number
+  originLng: number
+  destAddress: string
+  destLat: number
+  destLng: number
+  scheduledTime: string
+  estimatedDuration: number
+  distanceKm: number
+  status: string
+  route?: string
+  trackLog?: string
+  createdAt?: string
+} {
+  const camel = transformToCamel<Record<string, any>>(task)
+  return {
+    id: camel.id,
+    vehicleId: camel.vehicleId,
+    plateNo: extra?.plateNo,
+    driverId: camel.driverId,
+    driverName: extra?.driverName,
+    receiptId: camel.receiptId,
+    taskType: camel.taskType,
+    originAddress: camel.originAddress,
+    originLat: camel.originLat,
+    originLng: camel.originLng,
+    destAddress: camel.destAddress,
+    destLat: camel.destLat,
+    destLng: camel.destLng,
+    scheduledTime: camel.scheduledTime,
+    estimatedDuration: camel.estimatedDuration,
+    distanceKm: camel.distanceKm,
+    status: camel.status,
+    route: camel.route,
+    trackLog: camel.trackLog,
+    createdAt: camel.createdAt,
+  }
 }
 
 export function transformNotification(notification: Notification): {
@@ -327,10 +370,11 @@ export function transformNotification(notification: Notification): {
   type: string
   priority: string
   title: string
-  message: string
-  targetRole: string
-  targetUserId: string
-  relatedId: string
+  content: string
+  relatedId?: string
+  relatedType?: string
+  recipientId: string
+  recipientRole: string
   read: boolean
   createdAt: string
 } {
@@ -340,10 +384,11 @@ export function transformNotification(notification: Notification): {
     type: camel.type,
     priority: camel.priority,
     title: camel.title,
-    message: camel.message,
-    targetRole: camel.targetRole,
-    targetUserId: camel.targetUserId,
+    content: camel.content,
     relatedId: camel.relatedId,
+    relatedType: camel.relatedType,
+    recipientId: camel.recipientId,
+    recipientRole: camel.recipientRole,
     read: camel.isRead === 1 || camel.isRead === true,
     createdAt: camel.createdAt,
   }
