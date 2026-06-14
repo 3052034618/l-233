@@ -3,7 +3,6 @@ import {
   Box,
   MapPin,
   Users,
-  Search,
   FileText,
   QrCode,
   Printer,
@@ -15,12 +14,13 @@ import {
   X,
   ChevronRight,
   Sparkles,
+  Eye,
 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import StatusBadge from '@/components/ui/StatusBadge'
-import { cn } from '@/lib/utils'
-import { storageApi } from '@/lib/api'
-import type { StorageNiche, StorageContract, NicheMatchResult, CertificateData } from '@/lib/api'
+import { cn, showToast } from '@/lib/utils'
+import { storageApi, receiptApi } from '@/lib/api'
+import type { StorageNiche, StorageContract, NicheMatchResult, CertificateData, DeceasedInfo } from '@/lib/api'
 
 type AreaTab = 'A' | 'B' | 'C'
 
@@ -43,9 +43,11 @@ export default function StoragePage() {
   const [hoverPosition, setHoverPosition] = useState({ x: 0, y: 0 })
   const [loading, setLoading] = useState(false)
 
+  const [receiptList, setReceiptList] = useState<DeceasedInfo[]>([])
+  const [selectedReceiptId, setSelectedReceiptId] = useState('')
   const [deceasedName, setDeceasedName] = useState('')
+  const [receiptId, setReceiptId] = useState('')
   const [preferredType, setPreferredType] = useState<string>('')
-  const [receiptId, setReceiptId] = useState('RC' + Date.now())
 
   const [contractModalOpen, setContractModalOpen] = useState(false)
   const [selectedNiche, setSelectedNiche] = useState<StorageNiche | null>(null)
@@ -64,13 +66,24 @@ export default function StoragePage() {
   const [matchedNiches, setMatchedNiches] = useState<NicheMatchResult[]>([])
   const [contracts, setContracts] = useState<StorageContract[]>([])
 
+  const loadReceiptList = async () => {
+    try {
+      const data = await receiptApi.getList({ status: 'verified' })
+      setReceiptList(data)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '加载接收记录失败'
+      showToast(message, 'error')
+    }
+  }
+
   const loadNiches = async (area: string) => {
     setLoading(true)
     try {
       const data = await storageApi.getNiches({ area })
       setNiches(data)
     } catch (error) {
-      console.error('加载格位数据失败:', error)
+      const message = error instanceof Error ? error.message : '加载格位数据失败'
+      showToast(message, 'error')
     } finally {
       setLoading(false)
     }
@@ -81,7 +94,8 @@ export default function StoragePage() {
       const data = await storageApi.getContracts()
       setContracts(data)
     } catch (error) {
-      console.error('加载合同数据失败:', error)
+      const message = error instanceof Error ? error.message : '加载合同数据失败'
+      showToast(message, 'error')
     }
   }
 
@@ -93,9 +107,14 @@ export default function StoragePage() {
       const data = await storageApi.matchNiche(params)
       setMatchedNiches(data)
     } catch (error) {
-      console.error('匹配格位失败:', error)
+      const message = error instanceof Error ? error.message : '匹配格位失败'
+      showToast(message, 'error')
     }
   }
+
+  useEffect(() => {
+    loadReceiptList()
+  }, [])
 
   useEffect(() => {
     loadNiches(activeArea)
@@ -103,12 +122,33 @@ export default function StoragePage() {
 
   useEffect(() => {
     loadContracts()
-    loadMatchedNiches()
   }, [])
 
   useEffect(() => {
-    loadMatchedNiches()
-  }, [preferredType])
+    if (receiptId) {
+      loadMatchedNiches()
+    } else {
+      setMatchedNiches([])
+    }
+  }, [receiptId, preferredType])
+
+  const handleSelectReceipt = (id: string) => {
+    setSelectedReceiptId(id)
+    const receipt = receiptList.find((r) => r.id === id)
+    if (receipt) {
+      setReceiptId(receipt.id!)
+      setDeceasedName(receipt.name)
+      setContractForm((prev) => ({
+        ...prev,
+        familyName: receipt.familyName,
+        familyPhone: receipt.familyPhone,
+      }))
+    } else {
+      setReceiptId('')
+      setDeceasedName('')
+      setContractForm((prev) => ({ ...prev, familyName: '', familyPhone: '' }))
+    }
+  }
 
   const nicheGrid = useMemo(() => {
     const grid: Record<string, StorageNiche[]> = {}
@@ -122,12 +162,20 @@ export default function StoragePage() {
 
   const handleNicheClick = (niche: StorageNiche) => {
     if (niche.status !== 'available') return
+    if (!receiptId) {
+      showToast('请先选择一条已验证的接收记录', 'warning')
+      return
+    }
     setSelectedNiche(niche)
     setContractModalOpen(true)
   }
 
   const handleCreateContract = async () => {
     if (!selectedNiche) return
+    if (!receiptId) {
+      showToast('请先选择接收记录', 'error')
+      return
+    }
     setLoading(true)
     try {
       const startDate = new Date().toISOString().split('T')[0]
@@ -148,17 +196,39 @@ export default function StoragePage() {
       await loadContracts()
 
       if (newContract.id) {
-        const certData = await storageApi.getCertificate(newContract.id)
-        setCertificateData(certData)
+        try {
+          const certData = await storageApi.getCertificate(newContract.id)
+          setCertificateData(certData)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : '获取电子凭证失败'
+          showToast(message, 'error')
+        }
       }
 
       setContractModalOpen(false)
       setCertificateModalOpen(true)
+      showToast('合同创建成功', 'success')
     } catch (error) {
-      console.error('创建合同失败:', error)
+      const message = error instanceof Error ? error.message : '创建合同失败'
+      showToast(message, 'error')
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleViewContract = async (contract: StorageContract) => {
+    setCurrentContract(contract)
+    setCertificateData(null)
+    if (contract.id) {
+      try {
+        const certData = await storageApi.getCertificate(contract.id)
+        setCertificateData(certData)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '获取电子凭证失败'
+        showToast(message, 'error')
+      }
+    }
+    setCertificateModalOpen(true)
   }
 
   const handlePrint = () => {
@@ -404,17 +474,33 @@ export default function StoragePage() {
             <div className="space-y-3">
               <div>
                 <label className="label-field flex items-center gap-1">
-                  <User className="w-3 h-3" />
-                  逝者姓名
+                  <FileText className="w-3 h-3" />
+                  选择接收记录
                 </label>
-                <input
-                  type="text"
-                  value={deceasedName}
-                  onChange={(e) => setDeceasedName(e.target.value)}
-                  placeholder="请输入逝者姓名"
+                <select
+                  value={selectedReceiptId}
+                  onChange={(e) => handleSelectReceipt(e.target.value)}
                   className="input-field"
-                />
+                >
+                  <option value="">请选择已验证的接收记录</option>
+                  {receiptList.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name} - {r.familyName} ({r.id!.slice(0, 12)})
+                    </option>
+                  ))}
+                </select>
               </div>
+
+              {selectedReceiptId && deceasedName && (
+                <div className="p-3 bg-primary-50 rounded-lg border border-primary-100 text-sm">
+                  <div className="flex items-center gap-1 text-primary-700 font-medium mb-1">
+                    <User className="w-3 h-3" />
+                    逝者信息
+                  </div>
+                  <div className="text-slate-700">姓名：{deceasedName}</div>
+                  <div className="text-slate-600">家属：{contractForm.familyName} {contractForm.familyPhone}</div>
+                </div>
+              )}
 
               <div>
                 <label className="label-field flex items-center gap-1">
@@ -435,7 +521,11 @@ export default function StoragePage() {
             </div>
 
             <div className="mt-4 space-y-2 max-h-96 overflow-y-auto scrollbar-thin">
-              {loading ? (
+              {!receiptId ? (
+                <div className="text-center py-8 text-slate-400 text-sm">
+                  请先选择接收记录
+                </div>
+              ) : loading ? (
                 <div className="text-center py-8 text-slate-400 text-sm">
                   加载中...
                 </div>
@@ -478,6 +568,68 @@ export default function StoragePage() {
           </div>
         </div>
       </div>
+
+      {contracts.length > 0 && (
+        <div className="card p-6">
+          <h3 className="section-title flex items-center gap-2 mb-4">
+            <FileText className="w-4 h-4" />
+            合同列表
+          </h3>
+          <div className="overflow-x-auto scrollbar-thin">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  <th className="text-left py-3 px-3 text-xs font-medium text-slate-500">合同编号</th>
+                  <th className="text-left py-3 px-3 text-xs font-medium text-slate-500">逝者</th>
+                  <th className="text-left py-3 px-3 text-xs font-medium text-slate-500">格位</th>
+                  <th className="text-left py-3 px-3 text-xs font-medium text-slate-500">家属</th>
+                  <th className="text-left py-3 px-3 text-xs font-medium text-slate-500">期限</th>
+                  <th className="text-left py-3 px-3 text-xs font-medium text-slate-500">状态</th>
+                  <th className="text-right py-3 px-3 text-xs font-medium text-slate-500">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {contracts.map((contract) => (
+                  <tr
+                    key={contract.id}
+                    className="border-b border-slate-50 hover:bg-slate-50 transition-colors"
+                  >
+                    <td className="py-3 px-3 text-sm text-slate-700 font-medium">
+                      {contract.certificateNo || contract.id}
+                    </td>
+                    <td className="py-3 px-3 text-sm text-slate-600">
+                      {contract.deceasedName}
+                    </td>
+                    <td className="py-3 px-3 text-sm text-slate-600">
+                      {contract.nicheInfo
+                        ? `${contract.nicheInfo.area}区 ${contract.nicheInfo.row}行${contract.nicheInfo.col}列 ${contract.nicheInfo.level}层`
+                        : '-'}
+                    </td>
+                    <td className="py-3 px-3 text-sm text-slate-600">
+                      {contract.familyName}
+                    </td>
+                    <td className="py-3 px-3 text-sm text-slate-600">
+                      {contract.startDate} ~ {contract.endDate}
+                    </td>
+                    <td className="py-3 px-3">
+                      <StatusBadge status={contract.status} />
+                    </td>
+                    <td className="py-3 px-3 text-right">
+                      <button
+                        onClick={() => handleViewContract(contract)}
+                        className="text-xs text-primary-700 font-medium flex items-center gap-0.5 hover:underline ml-auto"
+                      >
+                        <Eye className="w-3 h-3" />
+                        查看凭证
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <Modal
         isOpen={contractModalOpen}
@@ -529,9 +681,10 @@ export default function StoragePage() {
                 </label>
                 <input
                   type="text"
-                  value={deceasedName || '张某某'}
-                  onChange={(e) => setDeceasedName(e.target.value)}
-                  className="input-field"
+                  value={deceasedName}
+                  readOnly
+                  className="input-field bg-slate-50"
+                  placeholder="从接收记录自动获取"
                 />
               </div>
               <div>

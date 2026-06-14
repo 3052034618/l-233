@@ -275,7 +275,9 @@ function initUsers(): User[] {
     { id: 'user_dispatcher', username: 'dispatcher', password: PASSWORD_HASH, name: '调度员李华', role: 'dispatcher', phone: '13800000002', created_at: formatDate(daysAgo(30)) },
     { id: 'user_embalmer', username: 'embalmer', password: PASSWORD_HASH, name: '防腐师王芳', role: 'embalmer', phone: '13800000003', created_at: formatDate(daysAgo(30)) },
     { id: 'user_cremator', username: 'cremator', password: PASSWORD_HASH, name: '火化师张强', role: 'cremator', phone: '13800000004', created_at: formatDate(daysAgo(30)) },
-    { id: 'user_driver', username: 'driver', password: PASSWORD_HASH, name: '司机赵军', role: 'driver', phone: '13800000005', created_at: formatDate(daysAgo(30)) },
+    { id: 'user_driver1', username: 'driver1', password: PASSWORD_HASH, name: '司机赵军', role: 'driver', phone: '13800000005', created_at: formatDate(daysAgo(30)) },
+    { id: 'user_driver2', username: 'driver2', password: PASSWORD_HASH, name: '司机钱伟', role: 'driver', phone: '13800000007', created_at: formatDate(daysAgo(25)) },
+    { id: 'user_driver3', username: 'driver3', password: PASSWORD_HASH, name: '司机孙明', role: 'driver', phone: '13800000008', created_at: formatDate(daysAgo(20)) },
     { id: 'user_family', username: 'family', password: PASSWORD_HASH, name: '家属陈先生', role: 'family', phone: '13800000006', created_at: formatDate(daysAgo(30)) },
   ]
 }
@@ -520,22 +522,22 @@ function initStorageContracts(receiptIds: string[], nicheIds: string[]): Storage
 
 function initVehicles(): Vehicle[] {
   return [
-    { id: 'vehicle_1', plate_no: '京A·88888', model: '奔驰威霆', type: 'luxury', capacity: 7, current_load: 0, fuel_level: 90, status: 'idle', driver_id: undefined, current_lat: 39.9042, current_lng: 116.4074, current_address: '北京市东城区殡仪馆' },
-    { id: 'vehicle_2', plate_no: '京A·66666', model: '别克GL8', type: 'van', capacity: 7, current_load: 2, fuel_level: 65, status: 'in_transit', driver_id: 'user_driver', current_lat: 39.9142, current_lng: 116.4274, current_address: '北京市朝阳区建国路' },
+    { id: 'vehicle_1', plate_no: '京A·88888', model: '奔驰威霆', type: 'luxury', capacity: 7, current_load: 0, fuel_level: 90, status: 'idle', driver_id: 'user_driver1', current_lat: 39.9042, current_lng: 116.4074, current_address: '北京市东城区殡仪馆' },
+    { id: 'vehicle_2', plate_no: '京A·66666', model: '别克GL8', type: 'van', capacity: 7, current_load: 2, fuel_level: 65, status: 'in_transit', driver_id: 'user_driver2', current_lat: 39.9142, current_lng: 116.4274, current_address: '北京市朝阳区建国路' },
     { id: 'vehicle_3', plate_no: '京A·55555', model: '大众帕萨特', type: 'sedan', capacity: 5, current_load: 0, fuel_level: 80, status: 'idle', driver_id: undefined, current_lat: 39.9042, current_lng: 116.4074, current_address: '北京市东城区殡仪馆' },
     { id: 'vehicle_4', plate_no: '京A·33333', model: '丰田考斯特', type: 'van', capacity: 17, current_load: 0, fuel_level: 55, status: 'maintenance', driver_id: undefined, current_lat: 39.9042, current_lng: 116.4074, current_address: '北京市东城区殡仪馆' },
-    { id: 'vehicle_5', plate_no: '京A·22222', model: '奔驰S级', type: 'luxury', capacity: 5, current_load: 0, fuel_level: 95, status: 'idle', driver_id: undefined, current_lat: 39.9042, current_lng: 116.4074, current_address: '北京市东城区殡仪馆' },
-    { id: 'vehicle_6', plate_no: '京A·11111', model: '奥迪A6L', type: 'sedan', capacity: 5, current_load: 3, fuel_level: 72, status: 'in_transit', driver_id: 'user_driver', current_lat: 39.8942, current_lng: 116.3974, current_address: '北京市东城区前门大街' },
+    { id: 'vehicle_5', plate_no: '京A·22222', model: '奔驰S级', type: 'luxury', capacity: 5, current_load: 0, fuel_level: 95, status: 'idle', driver_id: 'user_driver3', current_lat: 39.9042, current_lng: 116.4074, current_address: '北京市东城区殡仪馆' },
+    { id: 'vehicle_6', plate_no: '京A·11111', model: '奥迪A6L', type: 'sedan', capacity: 5, current_load: 3, fuel_level: 72, status: 'in_transit', driver_id: 'user_driver1', current_lat: 39.8942, current_lng: 116.3974, current_address: '北京市东城区前门大街' },
   ]
 }
 
 function initVehicleTasks(receiptIds: string[], vehicleIds: string[]): VehicleTask[] {
   const data = [
-    { vehicle: 1, driver: 'user_driver', receipt: 0, type: 'pickup' as const, origin: '北京市海淀区中关村大街1号', oLat: 39.9842, oLng: 116.3074, dest: '北京市东城区殡仪馆', dLat: 39.9042, dLng: 116.4074, distance: 15.5, duration: 45, status: 'completed' as const, hourOffset: -26 },
-    { vehicle: 1, driver: 'user_driver', receipt: 2, type: 'delivery' as const, origin: '北京市东城区殡仪馆', oLat: 39.9042, oLng: 116.4074, dest: '北京市西城区八宝山公墓', dLat: 39.9087, dLng: 116.2287, distance: 18.2, duration: 50, status: 'in_progress' as const, hourOffset: -1 },
-    { vehicle: 5, driver: 'user_driver', receipt: 3, type: 'pickup' as const, origin: '北京市朝阳区望京SOHO', oLat: 39.9942, oLng: 116.4774, dest: '北京市东城区殡仪馆', dLat: 39.9042, dLng: 116.4074, distance: 12.8, duration: 40, status: 'pending' as const, hourOffset: 3 },
-    { vehicle: 2, driver: 'user_driver', receipt: 5, type: 'transfer' as const, origin: '北京市东城区殡仪馆', oLat: 39.9042, oLng: 116.4074, dest: '北京市昌平区天寿陵园', dLat: 40.2242, dLng: 116.2074, distance: 42.3, duration: 90, status: 'pending' as const, hourOffset: 6 },
-    { vehicle: 0, driver: 'user_driver', receipt: null, type: 'transfer' as const, origin: '北京市东城区殡仪馆', oLat: 39.9042, oLng: 116.4074, dest: '北京市丰台区南苑机场', dLat: 39.7842, dLng: 116.3874, distance: 16.5, duration: 45, status: 'delayed' as const, hourOffset: -3 },
+    { vehicle: 1, driver: 'user_driver1', receipt: 0, type: 'pickup' as const, origin: '北京市海淀区中关村大街1号', oLat: 39.9842, oLng: 116.3074, dest: '北京市东城区殡仪馆', dLat: 39.9042, dLng: 116.4074, distance: 15.5, duration: 45, status: 'completed' as const, hourOffset: -26 },
+    { vehicle: 1, driver: 'user_driver2', receipt: 2, type: 'delivery' as const, origin: '北京市东城区殡仪馆', oLat: 39.9042, oLng: 116.4074, dest: '北京市西城区八宝山公墓', dLat: 39.9087, dLng: 116.2287, distance: 18.2, duration: 50, status: 'in_progress' as const, hourOffset: -1 },
+    { vehicle: 5, driver: 'user_driver3', receipt: 3, type: 'pickup' as const, origin: '北京市朝阳区望京SOHO', oLat: 39.9942, oLng: 116.4774, dest: '北京市东城区殡仪馆', dLat: 39.9042, dLng: 116.4074, distance: 12.8, duration: 40, status: 'pending' as const, hourOffset: 3 },
+    { vehicle: 2, driver: 'user_driver2', receipt: 5, type: 'transfer' as const, origin: '北京市东城区殡仪馆', oLat: 39.9042, oLng: 116.4074, dest: '北京市昌平区天寿陵园', dLat: 40.2242, dLng: 116.2074, distance: 42.3, duration: 90, status: 'pending' as const, hourOffset: 6 },
+    { vehicle: 0, driver: 'user_driver1', receipt: null, type: 'transfer' as const, origin: '北京市东城区殡仪馆', oLat: 39.9042, oLng: 116.4074, dest: '北京市丰台区南苑机场', dLat: 39.7842, dLng: 116.3874, distance: 16.5, duration: 45, status: 'delayed' as const, hourOffset: -3 },
   ]
 
   const tasks: VehicleTask[] = []

@@ -4,6 +4,26 @@ import { transformVehicle, transformVehicleTask, transformToCamel } from '../uti
 
 const router = Router()
 
+router.get('/drivers', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const allUsers = await users.getAll()
+    const drivers = allUsers
+      .filter((u) => u.role === 'driver')
+      .map((u) => ({ id: u.id, name: u.name, phone: u.phone }))
+    res.json({
+      success: true,
+      data: drivers,
+      message: '获取司机列表成功',
+    })
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      data: null,
+      message: error instanceof Error ? error.message : '获取司机列表失败',
+    })
+  }
+})
+
 function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371
   const dLat = (lat2 - lat1) * Math.PI / 180
@@ -23,7 +43,16 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
       filters.status = status
     }
     const list = await vehicles.getAll(filters)
-    const transformedList = list.map(item => transformVehicle(item))
+    const transformedList = await Promise.all(list.map(async (item) => {
+      const transformed = transformVehicle(item)
+      if (item.driver_id) {
+        const driver = await users.getById(item.driver_id)
+        if (driver) {
+          transformed.driverName = driver.name
+        }
+      }
+      return transformed
+    }))
     res.json({
       success: true,
       data: transformedList,
@@ -264,12 +293,11 @@ router.post('/tasks', async (req: Request, res: Response): Promise<void> => {
     const vehicle = await vehicles.getById(taskData.vehicle_id)
     const driver = taskData.driver_id ? await users.getById(taskData.driver_id) : null
 
-    if (taskData.status === 'in_progress') {
-      await vehicles.update(taskData.vehicle_id, {
-        status: 'in_transit',
-        current_task_id: id,
-      })
-    }
+    await vehicles.update(taskData.vehicle_id, {
+      status: 'in_transit',
+      current_task_id: id,
+      driver_id: taskData.driver_id,
+    })
 
     const created = await vehicleTasks.getById(id)
     res.json({

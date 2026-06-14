@@ -168,6 +168,12 @@ export interface CertificateData {
   }
 }
 
+export interface DriverInfo {
+  id: string
+  name: string
+  phone?: string
+}
+
 export interface Vehicle {
   id: string
   plateNo: string
@@ -180,6 +186,7 @@ export interface Vehicle {
   driverId?: string
   driverName?: string
   currentLocation: { lat: number; lng: number; address: string }
+  hasRealLocation?: boolean
 }
 
 export interface VehicleTask {
@@ -349,15 +356,15 @@ function convertKeysToCamelCase<T>(obj: unknown): T {
 function transformReceiptResponse(data: unknown): DeceasedInfo {
   const converted = convertKeysToCamelCase<Record<string, unknown>>(data)
   return {
-    id: converted.id as string,
-    name: converted.deceasedName as string,
-    gender: converted.deceasedGender as 'male' | 'female',
-    age: converted.deceasedAge as number,
-    idCard: converted.deceasedIdCard as string,
-    dateOfDeath: converted.dateOfDeath as string,
-    causeOfDeath: converted.causeOfDeath as string,
-    deathCertificateNo: converted.deathCertificateNo as string,
-    policeRecordNo: converted.policeRecordNo as string,
+    id: (converted.id || converted.receiptId) as string,
+    name: (converted.name || converted.deceasedName) as string,
+    gender: (converted.gender || converted.deceasedGender) as 'male' | 'female',
+    age: (converted.age || converted.deceasedAge) as number,
+    idCard: (converted.idCard || converted.deceasedIdCard) as string,
+    dateOfDeath: (converted.dateOfDeath) as string,
+    causeOfDeath: (converted.causeOfDeath) as string,
+    deathCertificateNo: (converted.deathCertificateNo) as string,
+    policeRecordNo: (converted.policeRecordNo) as string,
     status: converted.status as 'pending' | 'verified' | 'rejected' | 'processing',
     familyName: converted.familyName as string,
     familyPhone: converted.familyPhone as string,
@@ -506,6 +513,10 @@ function transformStorageContractResponse(data: unknown): StorageContract {
 
 function transformVehicleResponse(data: unknown): Vehicle {
   const converted = convertKeysToCamelCase<Record<string, unknown>>(data)
+  const loc = (converted.currentLocation || {}) as Record<string, unknown>
+  const hasRealLocation = loc.lat != null && loc.lng != null
+  const defaultLat = 39.9042
+  const defaultLng = 116.4074
   return {
     id: converted.id as string,
     plateNo: converted.plateNo as string,
@@ -517,7 +528,12 @@ function transformVehicleResponse(data: unknown): Vehicle {
     status: converted.status as 'idle' | 'in_transit' | 'maintenance',
     driverId: converted.driverId as string,
     driverName: converted.driverName as string,
-    currentLocation: converted.currentLocation as Vehicle['currentLocation'],
+    currentLocation: {
+      lat: (loc.lat as number) ?? defaultLat,
+      lng: (loc.lng as number) ?? defaultLng,
+      address: (loc.address as string) || (hasRealLocation ? '当前位置' : '殡仪馆（默认）'),
+    },
+    hasRealLocation,
   }
 }
 
@@ -951,6 +967,10 @@ export const vehicleApi = {
   getList: async (params?: { status?: string }): Promise<Vehicle[]> => {
     const response: ApiResponse<unknown[]> = await api.get('/vehicles', { params })
     return response.data.map((item) => transformVehicleResponse(item))
+  },
+  getDrivers: async (): Promise<DriverInfo[]> => {
+    const response: ApiResponse<{ id: string; name: string; phone?: string }[]> = await api.get('/vehicles/drivers')
+    return response.data
   },
   getTrack: async (id: string): Promise<{ trackLog: VehicleTask['trackLog'] }> => {
     const response: ApiResponse<{ track_log: string }> = await api.get(`/vehicles/${id}/track`)

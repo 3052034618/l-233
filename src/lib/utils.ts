@@ -43,9 +43,9 @@ export function convertKeysToSnakeCase(obj: any): any {
   return result
 }
 
-export function showToast(message: string, type: 'success' | 'error' | 'info' = 'info') {
+export function showToast(message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') {
   const toast = document.createElement('div')
-  const bgColor = type === 'success' ? 'bg-success-500' : type === 'error' ? 'bg-danger-500' : 'bg-primary-500'
+  const bgColor = type === 'success' ? 'bg-success-500' : type === 'error' ? 'bg-danger-500' : type === 'warning' ? 'bg-warning-500' : 'bg-primary-500'
   toast.className = `fixed top-4 right-4 z-50 px-4 py-3 rounded-lg text-white text-sm font-medium shadow-lg ${bgColor} animate-fade-in`
   toast.textContent = message
   document.body.appendChild(toast)

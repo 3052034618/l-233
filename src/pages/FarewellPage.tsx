@@ -22,6 +22,8 @@ import Modal from '@/components/ui/Modal'
 import StatusBadge from '@/components/ui/StatusBadge'
 import {
   farewellApi,
+  receiptApi,
+  type DeceasedInfo,
   type FarewellHall,
   type FarewellReservation,
   type HallSuggestion,
@@ -85,8 +87,13 @@ export default function FarewellPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const [receipts, setReceipts] = useState<DeceasedInfo[]>([])
   const [formData, setFormData] = useState({
     hallId: '',
+    receiptId: '',
+    deceasedName: '',
+    familyName: '',
+    familyPhone: '',
     attendeeCount: 50,
     durationMinutes: 60,
     preferredStartTime: '09:00',
@@ -97,6 +104,16 @@ export default function FarewellPage() {
     startTime: string
     endTime: string
   } | null>(null)
+
+  const loadReceipts = useCallback(async () => {
+    try {
+      const data = await receiptApi.getList({ status: 'verified' })
+      setReceipts(data)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '加载接收记录失败'
+      showToast(message, 'error')
+    }
+  }, [])
 
   useEffect(() => {
     loadData()
@@ -160,18 +177,22 @@ export default function FarewellPage() {
 
   const handleSubmit = async () => {
     if (!selectedSuggestion || !formData.hallId) return
+    if (!formData.receiptId) {
+      showToast('请先选择接收记录', 'error')
+      return
+    }
     try {
       await farewellApi.createReservation({
         hallId: formData.hallId,
-        receiptId: 'mock-receipt-' + Date.now(),
-        deceasedName: '示例逝者',
+        receiptId: formData.receiptId,
+        deceasedName: formData.deceasedName,
         attendeeCount: formData.attendeeCount,
         durationMinutes: formData.durationMinutes,
         startTime: selectedSuggestion.startTime,
         endTime: selectedSuggestion.endTime,
         status: 'reserved',
-        familyName: '示例家属',
-        familyPhone: '13800138000',
+        familyName: formData.familyName,
+        familyPhone: formData.familyPhone,
       })
       setModalOpen(false)
       setSuggestions([])
@@ -258,7 +279,7 @@ export default function FarewellPage() {
             </button>
           </div>
 
-          <button onClick={() => setModalOpen(true)} className="btn-primary">
+          <button onClick={() => { setModalOpen(true); loadReceipts() }} className="btn-primary">
             <Sparkles className="w-4 h-4 mr-1.5" />
             智能预约
           </button>
@@ -382,7 +403,7 @@ export default function FarewellPage() {
                           >
                             <div className="h-full flex items-center justify-center px-1.5 overflow-hidden">
                               <span className="text-xs text-white font-medium truncate">
-                                {res.deceasedName}
+                                {res.deceasedName} / {res.familyName}
                               </span>
                             </div>
                           </div>
@@ -469,7 +490,7 @@ export default function FarewellPage() {
             </button>
             <button
               onClick={handleSubmit}
-              disabled={!selectedSuggestion}
+              disabled={!selectedSuggestion || !formData.receiptId}
               className="btn-primary"
             >
               <Check className="w-4 h-4 mr-1" />
@@ -480,6 +501,31 @@ export default function FarewellPage() {
       >
         <div className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="label-field">选择接收记录</label>
+              <select
+                className="input-field"
+                value={formData.receiptId}
+                onChange={(e) => {
+                  const receiptId = e.target.value
+                  const selected = receipts.find((r) => r.id === receiptId)
+                  setFormData({
+                    ...formData,
+                    receiptId,
+                    deceasedName: selected?.name || '',
+                    familyName: selected?.familyName || '',
+                    familyPhone: selected?.familyPhone || '',
+                  })
+                }}
+              >
+                <option value="">请选择接收记录</option>
+                {receipts.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name} - 家属: {r.familyName} ({r.familyPhone})
+                  </option>
+                ))}
+              </select>
+            </div>
             <div>
               <label className="label-field">选择厅室</label>
               <select

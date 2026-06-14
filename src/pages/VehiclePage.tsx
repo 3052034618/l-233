@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Car,
   MapPin,
@@ -16,11 +16,12 @@ import {
   Sparkles,
   Route,
   Truck,
+  AlertTriangle,
 } from 'lucide-react'
 import StatusBadge from '@/components/ui/StatusBadge'
-import { cn } from '@/lib/utils'
+import { cn, showToast } from '@/lib/utils'
 import { vehicleApi } from '@/lib/api'
-import type { Vehicle, VehicleTask, DispatchSuggestion } from '@/lib/api'
+import type { Vehicle, VehicleTask, DispatchSuggestion, DriverInfo } from '@/lib/api'
 
 const addressCoordinates: Record<string, { lat: number; lng: number }> = {
   '殡仪馆': { lat: 39.9042, lng: 116.4074 },
@@ -60,13 +61,16 @@ export default function VehiclePage() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
   const [tasks, setTasks] = useState<VehicleTask[]>([])
   const [dispatchSuggestions, setDispatchSuggestions] = useState<DispatchSuggestion[]>([])
+  const [drivers, setDrivers] = useState<DriverInfo[]>([])
+  const [selectedDriverId, setSelectedDriverId] = useState<Record<string, string>>({})
 
   const loadVehicles = async () => {
     try {
       const data = await vehicleApi.getList()
       setVehicles(data)
     } catch (error) {
-      console.error('加载车辆数据失败:', error)
+      const message = error instanceof Error ? error.message : '加载车辆数据失败'
+      showToast(message, 'error')
     }
   }
 
@@ -75,13 +79,25 @@ export default function VehiclePage() {
       const data = await vehicleApi.getTasks()
       setTasks(data)
     } catch (error) {
-      console.error('加载任务数据失败:', error)
+      const message = error instanceof Error ? error.message : '加载任务数据失败'
+      showToast(message, 'error')
+    }
+  }
+
+  const loadDrivers = async () => {
+    try {
+      const data = await vehicleApi.getDrivers()
+      setDrivers(data)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '加载司机列表失败'
+      showToast(message, 'error')
     }
   }
 
   useEffect(() => {
     loadVehicles()
     loadTasks()
+    loadDrivers()
   }, [])
 
   const parseAddress = (address: string): { lat: number; lng: number } | null => {
@@ -102,7 +118,7 @@ export default function VehiclePage() {
 
   const handleGetDispatchSuggest = async () => {
     if (!origin || !destination) {
-      alert('请输入出发地和目的地')
+      showToast('请输入出发地和目的地', 'warning')
       return
     }
 
@@ -112,7 +128,7 @@ export default function VehiclePage() {
       const destCoords = parseAddress(destination)
 
       if (!originCoords || !destCoords) {
-        alert('无法解析地址坐标')
+        showToast('无法解析地址坐标', 'error')
         return
       }
 
@@ -126,7 +142,8 @@ export default function VehiclePage() {
       const sortedData = [...data].sort((a, b) => b.score - a.score)
       setDispatchSuggestions(sortedData)
     } catch (error) {
-      console.error('获取调度推荐失败:', error)
+      const message = error instanceof Error ? error.message : '获取调度推荐失败'
+      showToast(message, 'error')
     } finally {
       setLoading(false)
     }
@@ -134,7 +151,19 @@ export default function VehiclePage() {
 
   const handleCreateTask = async (suggestion: DispatchSuggestion) => {
     if (!origin || !destination || !scheduledTime) {
-      alert('请填写完整信息（出发地、目的地、预约时间）')
+      showToast('请填写完整信息（出发地、目的地、预约时间）', 'warning')
+      return
+    }
+
+    const vehicle = vehicles.find((v) => v.id === suggestion.vehicleId)
+    if (!vehicle) {
+      showToast('找不到对应车辆', 'error')
+      return
+    }
+
+    let driverId = vehicle.driverId || selectedDriverId[suggestion.vehicleId] || ''
+    if (!driverId) {
+      showToast('该车辆无司机，请先选择司机再派单', 'warning')
       return
     }
 
@@ -142,16 +171,15 @@ export default function VehiclePage() {
     try {
       const originCoords = parseAddress(origin)
       const destCoords = parseAddress(destination)
-      const vehicle = vehicles.find((v) => v.id === suggestion.vehicleId)
 
-      if (!originCoords || !destCoords || !vehicle) {
-        alert('无法解析地址或找不到车辆')
+      if (!originCoords || !destCoords) {
+        showToast('无法解析地址', 'error')
         return
       }
 
       const taskData = {
         vehicleId: suggestion.vehicleId,
-        driverId: vehicle.driverId || '',
+        driverId,
         taskType,
         origin: { address: origin, lat: originCoords.lat, lng: originCoords.lng },
         destination: { address: destination, lat: destCoords.lat, lng: destCoords.lng },
@@ -164,13 +192,14 @@ export default function VehiclePage() {
 
       await loadVehicles()
       await loadTasks()
-
       setDispatchSuggestions([])
       setOrigin('')
       setDestination('')
       setScheduledTime('')
+      showToast('派单成功', 'success')
     } catch (error) {
-      console.error('创建任务失败:', error)
+      const message = error instanceof Error ? error.message : '创建任务失败'
+      showToast(message, 'error')
     } finally {
       setLoading(false)
     }
@@ -180,15 +209,19 @@ export default function VehiclePage() {
     try {
       if (action === 'start') {
         await vehicleApi.updateTaskStatus(task.id!, { status: 'in_progress' })
+        showToast('任务已开始', 'success')
       } else if (action === 'complete') {
         await vehicleApi.updateTaskStatus(task.id!, { status: 'completed' })
+        showToast('任务已完成', 'success')
       } else if (action === 'remind') {
         await vehicleApi.updateTaskStatus(task.id!, { status: 'delayed' })
+        showToast('催单已发送', 'success')
       }
       await loadVehicles()
       await loadTasks()
     } catch (error) {
-      console.error('更新任务状态失败:', error)
+      const message = error instanceof Error ? error.message : '更新任务状态失败'
+      showToast(message, 'error')
     }
   }
 
@@ -214,6 +247,8 @@ export default function VehiclePage() {
       ((lng - minLng) / (maxLng - minLng)) * (mapWidth - mapPadding * 2)
     )
   }
+
+  const vehiclesWithRealLocation = vehicles.filter((v) => v.hasRealLocation)
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -248,7 +283,14 @@ export default function VehiclePage() {
             <div className="space-y-2 text-xs">
               <div className="flex items-center gap-1.5 text-slate-600">
                 <User className="w-3 h-3 text-slate-400" />
-                <span>{vehicle.driverName || '未分配司机'}</span>
+                {vehicle.driverName ? (
+                  <span>{vehicle.driverName}</span>
+                ) : (
+                  <span className="text-warning-600 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" />
+                    无司机
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-1.5 text-slate-600">
                 <Users className="w-3 h-3 text-slate-400" />
@@ -391,96 +433,129 @@ export default function VehiclePage() {
                   暂无可用车辆推荐
                 </div>
               ) : (
-                dispatchSuggestions.map((suggestion, idx) => (
-                  <div
-                    key={suggestion.vehicleId}
-                    className={cn(
-                      'p-4 rounded-lg border transition-all duration-150 group',
-                      idx === 0
-                        ? 'bg-primary-50 border-primary-200 hover:bg-primary-100'
-                        : 'bg-slate-50 border-slate-100 hover:bg-slate-100'
-                    )}
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={cn(
-                            'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold',
-                            idx === 0
-                              ? 'bg-warning-500 text-white'
-                              : 'bg-slate-200 text-slate-600'
-                          )}
-                        >
-                          {idx + 1}
-                        </span>
-                        <div>
-                          <div className="font-semibold text-slate-800">
-                            {suggestion.vehiclePlate}
-                          </div>
-                          <div className="text-xs text-slate-500">
-                            司机：{suggestion.driverName}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div
-                          className={cn(
-                            'text-lg font-bold',
-                            idx === 0 ? 'text-primary-700' : 'text-slate-700'
-                          )}
-                        >
-                          {suggestion.score}
-                          <span className="text-xs font-normal ml-0.5">分</span>
-                        </div>
-                        <div className="flex items-center gap-0.5 justify-end">
-                          {Array.from({ length: 5 }, (_, i) => (
-                            <Star
-                              key={i}
-                              className={cn(
-                                'w-3 h-3',
-                                i < Math.ceil(suggestion.score / 20)
-                                  ? 'text-warning-500 fill-warning-500'
-                                  : 'text-slate-300'
-                              )}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    </div>
+                dispatchSuggestions.map((suggestion, idx) => {
+                  const vehicle = vehicles.find((v) => v.id === suggestion.vehicleId)
+                  const hasDriver = !!(vehicle?.driverId || vehicle?.driverName)
+                  const needsDriverSelection = !hasDriver
 
-                    <div className="grid grid-cols-3 gap-2 text-xs text-slate-500">
-                      <div className="flex items-center gap-1">
-                        <Route className="w-3 h-3" />
-                        {suggestion.distanceKm}km
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {suggestion.estimatedArrival.replace('预计 ', '').replace(' 分钟后到达', '')}分
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Users className="w-3 h-3" />
-                        负载 {suggestion.currentLoad}
-                      </div>
-                    </div>
-
-                    <div className="mt-3 pt-3 border-t border-slate-200 flex items-center justify-between">
-                      {idx === 0 && (
-                        <span className="text-xs text-primary-600 font-medium flex items-center gap-1">
-                          <Sparkles className="w-3 h-3" />
-                          最佳推荐
-                        </span>
+                  return (
+                    <div
+                      key={suggestion.vehicleId}
+                      className={cn(
+                        'p-4 rounded-lg border transition-all duration-150 group',
+                        idx === 0
+                          ? 'bg-primary-50 border-primary-200 hover:bg-primary-100'
+                          : 'bg-slate-50 border-slate-100 hover:bg-slate-100'
                       )}
-                      {idx !== 0 && <span className="text-xs text-slate-400"></span>}
-                      <button
-                        onClick={() => handleCreateTask(suggestion)}
-                        disabled={loading}
-                        className="text-xs text-primary-700 font-medium flex items-center gap-0.5 hover:underline disabled:opacity-50"
-                      >
-                        派单 <ChevronRight className="w-3 h-3" />
-                      </button>
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={cn(
+                              'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold',
+                              idx === 0
+                                ? 'bg-warning-500 text-white'
+                                : 'bg-slate-200 text-slate-600'
+                            )}
+                          >
+                            {idx + 1}
+                          </span>
+                          <div>
+                            <div className="font-semibold text-slate-800">
+                              {suggestion.vehiclePlate}
+                            </div>
+                            <div className="text-xs text-slate-500">
+                              司机：{suggestion.driverName || '无司机'}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div
+                            className={cn(
+                              'text-lg font-bold',
+                              idx === 0 ? 'text-primary-700' : 'text-slate-700'
+                            )}
+                          >
+                            {suggestion.score}
+                            <span className="text-xs font-normal ml-0.5">分</span>
+                          </div>
+                          <div className="flex items-center gap-0.5 justify-end">
+                            {Array.from({ length: 5 }, (_, i) => (
+                              <Star
+                                key={i}
+                                className={cn(
+                                  'w-3 h-3',
+                                  i < Math.ceil(suggestion.score / 20)
+                                    ? 'text-warning-500 fill-warning-500'
+                                    : 'text-slate-300'
+                                )}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 text-xs text-slate-500">
+                        <div className="flex items-center gap-1">
+                          <Route className="w-3 h-3" />
+                          {suggestion.distanceKm}km
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {suggestion.estimatedArrival.replace('预计 ', '').replace(' 分钟后到达', '')}分
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Users className="w-3 h-3" />
+                          负载 {suggestion.currentLoad}
+                        </div>
+                      </div>
+
+                      {needsDriverSelection && (
+                        <div className="mt-2">
+                          <select
+                            value={selectedDriverId[suggestion.vehicleId] || ''}
+                            onChange={(e) =>
+                              setSelectedDriverId((prev) => ({
+                                ...prev,
+                                [suggestion.vehicleId]: e.target.value,
+                              }))
+                            }
+                            className="input-field text-xs !py-1.5"
+                          >
+                            <option value="">请选择司机</option>
+                            {drivers.map((d) => (
+                              <option key={d.id} value={d.id}>
+                                {d.name}{d.phone ? ` (${d.phone})` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      <div className="mt-3 pt-3 border-t border-slate-200 flex items-center justify-between">
+                        {idx === 0 && (
+                          <span className="text-xs text-primary-600 font-medium flex items-center gap-1">
+                            <Sparkles className="w-3 h-3" />
+                            最佳推荐
+                          </span>
+                        )}
+                        {idx !== 0 && <span className="text-xs text-slate-400"></span>}
+                        <button
+                          onClick={() => handleCreateTask(suggestion)}
+                          disabled={loading || (needsDriverSelection && !selectedDriverId[suggestion.vehicleId])}
+                          className={cn(
+                            'text-xs font-medium flex items-center gap-0.5 disabled:opacity-50',
+                            needsDriverSelection && !selectedDriverId[suggestion.vehicleId]
+                              ? 'text-slate-400'
+                              : 'text-primary-700 hover:underline'
+                          )}
+                        >
+                          派单 <ChevronRight className="w-3 h-3" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  )
+                })
               )}
             </div>
           </div>
@@ -558,7 +633,7 @@ export default function VehiclePage() {
                   ))}
               </svg>
 
-              {vehicles.map((vehicle) => {
+              {vehiclesWithRealLocation.map((vehicle) => {
                 const x = lngToX(vehicle.currentLocation.lng)
                 const y = latToY(vehicle.currentLocation.lat)
                 const colorMap = {
@@ -605,6 +680,9 @@ export default function VehiclePage() {
               <div className="absolute bottom-3 left-3 text-xs text-slate-500 bg-white/80 backdrop-blur-sm px-2 py-1 rounded">
                 <MapPin className="w-3 h-3 inline mr-1" />
                 实时地图 · {vehicles.filter((v) => v.status === 'in_transit').length} 辆运行中
+                {!vehiclesWithRealLocation.length && vehicles.length > 0 && (
+                  <span className="ml-2 text-warning-600">（暂无真实坐标车辆）</span>
+                )}
               </div>
             </div>
           </div>
@@ -688,7 +766,7 @@ export default function VehiclePage() {
                       <td className="py-3 px-3">
                         <div className="flex items-center gap-1.5 text-sm text-slate-700">
                           <User className="w-3.5 h-3.5 text-slate-400" />
-                          {task.driverName}
+                          {task.driverName || '未分配'}
                         </div>
                       </td>
                       <td className="py-3 px-3 text-sm text-slate-600">
