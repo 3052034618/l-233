@@ -285,8 +285,23 @@ router.post('/tasks', async (req: Request, res: Response): Promise<void> => {
       estimated_duration: Number(body.estimated_duration),
       distance_km: Number(body.distance_km),
       status: body.status || 'pending',
-      route: body.route,
-      track_log: body.track_log,
+      route: body.route
+        ? typeof body.route === 'string'
+          ? body.route
+          : JSON.stringify(body.route)
+        : JSON.stringify([
+            { lat: Number(body.origin_lat), lng: Number(body.origin_lng) },
+            {
+              lat: (Number(body.origin_lat) + Number(body.dest_lat)) / 2,
+              lng: (Number(body.origin_lng) + Number(body.dest_lng)) / 2,
+            },
+            { lat: Number(body.dest_lat), lng: Number(body.dest_lng) },
+          ]),
+      track_log: body.track_log
+        ? typeof body.track_log === 'string'
+          ? body.track_log
+          : JSON.stringify(body.track_log)
+        : undefined,
     }
     await vehicleTasks.create(taskData)
 
@@ -297,6 +312,9 @@ router.post('/tasks', async (req: Request, res: Response): Promise<void> => {
       status: 'in_transit',
       current_task_id: id,
       driver_id: taskData.driver_id,
+      current_lat: taskData.origin_lat,
+      current_lng: taskData.origin_lng,
+      current_address: taskData.origin_address,
     })
 
     const created = await vehicleTasks.getById(id)

@@ -18,7 +18,9 @@ function parseDateParam(dateStr?: string): string {
   if (dateStr) {
     return dateStr.slice(0, 10)
   }
-  return new Date().toISOString().slice(0, 10)
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
 function parseDateTime(dt: string): Date {
@@ -26,7 +28,8 @@ function parseDateTime(dt: string): Date {
 }
 
 function formatDateTime(d: Date): string {
-  return d.toISOString().slice(0, 19).replace('T', ' ')
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
 function hasTimeConflict(
@@ -156,7 +159,14 @@ router.get('/suggest', async (req: Request, res: Response): Promise<void> => {
       return
     }
 
-    const today = new Date().toISOString().slice(0, 10)
+    let targetDate = new Date().toISOString().slice(0, 10)
+    let preferredStart: Date | null = null
+    if (preferredTime) {
+      preferredStart = parseDateTime(preferredTime)
+      const pad = (n: number) => String(n).padStart(2, '0')
+      targetDate = `${preferredStart.getFullYear()}-${pad(preferredStart.getMonth() + 1)}-${pad(preferredStart.getDate())}`
+    }
+
     const suggestions: Array<{
       hallId: string
       hallName: string
@@ -167,21 +177,25 @@ router.get('/suggest', async (req: Request, res: Response): Promise<void> => {
     }> = []
 
     for (const hall of availableHalls) {
-      const reservations = await farewellReservations.getByHallIdAndDate(hall.id, today)
+      const reservations = await farewellReservations.getByHallIdAndDate(hall.id, targetDate)
       const activeReservations = reservations.filter((r) => r.status !== 'cancelled')
 
       const conflictSlots: Array<{ startTime: string; endTime: string; reason: string }> = []
       const suggestedSlots: Array<{ startTime: string; endTime: string }> = []
       const alternativeSlots: Array<{ startTime: string; endTime: string }> = []
 
-      const workingStart = new Date()
-      workingStart.setHours(8, 0, 0, 0)
-      const workingEnd = new Date()
-      workingEnd.setHours(18, 0, 0, 0)
-
-      let preferredStart: Date | null = null
-      if (preferredTime) {
-        preferredStart = parseDateTime(preferredTime)
+      let workingStart: Date
+      let workingEnd: Date
+      if (preferredStart) {
+        workingStart = new Date(preferredStart)
+        workingStart.setHours(8, 0, 0, 0)
+        workingEnd = new Date(preferredStart)
+        workingEnd.setHours(20, 0, 0, 0)
+      } else {
+        workingStart = new Date()
+        workingStart.setHours(8, 0, 0, 0)
+        workingEnd = new Date()
+        workingEnd.setHours(20, 0, 0, 0)
       }
 
       let cursor = new Date(workingStart)

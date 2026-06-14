@@ -558,6 +558,39 @@ function transformVehicleTaskResponse(data: unknown): VehicleTask {
     }
   }
 
+  let route: { lat: number; lng: number }[] = []
+  if (converted.route) {
+    if (typeof converted.route === 'string') {
+      try {
+        route = JSON.parse(converted.route)
+      } catch {
+        route = []
+      }
+    } else if (Array.isArray(converted.route)) {
+      route = converted.route as { lat: number; lng: number }[]
+    }
+  }
+  if (route.length === 0 && origin && destination) {
+    route = [
+      { lat: origin.lat, lng: origin.lng },
+      { lat: (origin.lat + destination.lat) / 2, lng: (origin.lng + destination.lng) / 2 },
+      { lat: destination.lat, lng: destination.lng },
+    ]
+  }
+
+  let trackLog: { lat: number; lng: number; timestamp: string }[] = []
+  if (converted.trackLog) {
+    if (typeof converted.trackLog === 'string') {
+      try {
+        trackLog = JSON.parse(converted.trackLog)
+      } catch {
+        trackLog = []
+      }
+    } else if (Array.isArray(converted.trackLog)) {
+      trackLog = converted.trackLog as { lat: number; lng: number; timestamp: string }[]
+    }
+  }
+
   return {
     id: converted.id as string,
     vehicleId: converted.vehicleId as string,
@@ -572,9 +605,9 @@ function transformVehicleTaskResponse(data: unknown): VehicleTask {
     estimatedDuration: converted.estimatedDuration as number,
     distanceKm: converted.distanceKm as number,
     status: converted.status as 'pending' | 'in_progress' | 'completed' | 'delayed',
-    route: converted.route as VehicleTask['route'],
+    route,
     currentPosition: converted.currentPosition as VehicleTask['currentPosition'],
-    trackLog: converted.trackLog as VehicleTask['trackLog'],
+    trackLog,
     createdAt: converted.createdAt as string,
   }
 }

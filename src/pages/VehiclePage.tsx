@@ -248,8 +248,6 @@ export default function VehiclePage() {
     )
   }
 
-  const vehiclesWithRealLocation = vehicles.filter((v) => v.hasRealLocation)
-
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -617,7 +615,7 @@ export default function VehiclePage() {
                 </defs>
 
                 {tasks
-                  .filter((t) => t.status === 'in_progress')
+                  .filter((t) => t.status === 'in_progress' || t.status === 'pending')
                   .map((task) => (
                     <polyline
                       key={task.id}
@@ -627,13 +625,14 @@ export default function VehiclePage() {
                       fill="none"
                       stroke="url(#routeGradient)"
                       strokeWidth="3"
-                      strokeDasharray="8,4"
+                      strokeDasharray={task.status === 'pending' ? '4,4' : '8,4'}
                       strokeLinecap="round"
+                      opacity={task.status === 'pending' ? 0.6 : 1}
                     />
                   ))}
               </svg>
 
-              {vehiclesWithRealLocation.map((vehicle) => {
+              {vehicles.map((vehicle) => {
                 const x = lngToX(vehicle.currentLocation.lng)
                 const y = latToY(vehicle.currentLocation.lat)
                 const colorMap = {
@@ -646,6 +645,7 @@ export default function VehiclePage() {
                   in_transit: 'ring-warning-300',
                   maintenance: 'ring-danger-300',
                 }
+                const isDefaultLoc = !vehicle.hasRealLocation
                 return (
                   <div
                     key={vehicle.id}
@@ -656,7 +656,7 @@ export default function VehiclePage() {
                       transform: 'translate(-50%, -50%)',
                     }}
                   >
-                    {vehicle.status !== 'maintenance' && (
+                    {vehicle.status !== 'maintenance' && !isDefaultLoc && (
                       <div
                         className={cn(
                           'absolute inset-0 w-8 h-8 -m-1 rounded-full ring-4 animate-ping opacity-40',
@@ -666,10 +666,11 @@ export default function VehiclePage() {
                     )}
                     <div
                       className={cn(
-                        'relative w-6 h-6 rounded-full flex items-center justify-center shadow-lg ring-2 ring-white',
-                        colorMap[vehicle.status]
+                        'relative w-6 h-6 rounded-full flex items-center justify-center shadow-lg ring-2',
+                        colorMap[vehicle.status],
+                        isDefaultLoc ? 'ring-dashed ring-slate-400 opacity-70' : 'ring-white'
                       )}
-                      title={`${vehicle.plateNo} - ${vehicle.currentLocation.address}`}
+                      title={`${vehicle.plateNo} - ${vehicle.currentLocation.address}${isDefaultLoc ? '（兜底位置）' : ''}`}
                     >
                       <Car className="w-3.5 h-3.5 text-white" />
                     </div>
@@ -677,12 +678,19 @@ export default function VehiclePage() {
                 )
               })}
 
-              <div className="absolute bottom-3 left-3 text-xs text-slate-500 bg-white/80 backdrop-blur-sm px-2 py-1 rounded">
-                <MapPin className="w-3 h-3 inline mr-1" />
-                实时地图 · {vehicles.filter((v) => v.status === 'in_transit').length} 辆运行中
-                {!vehiclesWithRealLocation.length && vehicles.length > 0 && (
-                  <span className="ml-2 text-warning-600">（暂无真实坐标车辆）</span>
-                )}
+              <div className="absolute bottom-3 left-3 text-xs text-slate-500 bg-white/80 backdrop-blur-sm px-2 py-1 rounded flex items-center gap-3">
+                <span>
+                  <MapPin className="w-3 h-3 inline mr-1" />
+                  实时地图 · {vehicles.filter((v) => v.status === 'in_transit').length} 辆运行中
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-3 h-3 rounded-full bg-success-500 ring-2 ring-white inline-block" />
+                  真实坐标
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-3 h-3 rounded-full bg-success-500 ring-2 ring-dashed ring-slate-400 opacity-70 inline-block" />
+                  兜底位置
+                </span>
               </div>
             </div>
           </div>
