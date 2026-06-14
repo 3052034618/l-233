@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   Car,
   MapPin,
@@ -19,164 +19,24 @@ import {
 } from 'lucide-react'
 import StatusBadge from '@/components/ui/StatusBadge'
 import { cn } from '@/lib/utils'
+import { vehicleApi } from '@/lib/api'
 import type { Vehicle, VehicleTask, DispatchSuggestion } from '@/lib/api'
 
-const mockVehicles: Vehicle[] = [
-  {
-    id: 'v1',
-    plateNo: '京A·88888',
-    model: '奔驰威霆',
-    type: 'luxury',
-    capacity: 7,
-    currentLoad: 0,
-    fuelLevel: 85,
-    status: 'idle',
-    driverId: 'd1',
-    driverName: '张师傅',
-    currentLocation: { lat: 39.9042, lng: 116.4074, address: '殡仪馆停车场' },
-  },
-  {
-    id: 'v2',
-    plateNo: '京B·66666',
-    model: '别克GL8',
-    type: 'van',
-    capacity: 7,
-    currentLoad: 3,
-    fuelLevel: 62,
-    status: 'in_transit',
-    driverId: 'd2',
-    driverName: '李师傅',
-    currentLocation: { lat: 39.9242, lng: 116.4374, address: '朝阳区东三环' },
-  },
-  {
-    id: 'v3',
-    plateNo: '京C·12345',
-    model: '大众帕萨特',
-    type: 'sedan',
-    capacity: 5,
-    currentLoad: 0,
-    fuelLevel: 30,
-    status: 'idle',
-    driverId: 'd3',
-    driverName: '王师傅',
-    currentLocation: { lat: 39.8842, lng: 116.3674, address: '丰台区南四环' },
-  },
-  {
-    id: 'v4',
-    plateNo: '京D·99999',
-    model: '丰田考斯特',
-    type: 'van',
-    capacity: 12,
-    currentLoad: 0,
-    fuelLevel: 15,
-    status: 'maintenance',
-    driverId: undefined,
-    driverName: undefined,
-    currentLocation: { lat: 39.9142, lng: 116.3974, address: '维修车间' },
-  },
-  {
-    id: 'v5',
-    plateNo: '京E·55555',
-    model: '红旗H9',
-    type: 'luxury',
-    capacity: 5,
-    currentLoad: 2,
-    fuelLevel: 78,
-    status: 'in_transit',
-    driverId: 'd5',
-    driverName: '赵师傅',
-    currentLocation: { lat: 39.9442, lng: 116.4674, address: '朝阳区望京' },
-  },
-  {
-    id: 'v6',
-    plateNo: '京F·33333',
-    model: '奥迪A6L',
-    type: 'sedan',
-    capacity: 5,
-    currentLoad: 0,
-    fuelLevel: 92,
-    status: 'idle',
-    driverId: 'd6',
-    driverName: '刘师傅',
-    currentLocation: { lat: 39.8742, lng: 116.4174, address: '西城区西单' },
-  },
-]
-
-const mockTasks: VehicleTask[] = [
-  {
-    id: 't1',
-    vehicleId: 'v2',
-    vehiclePlate: '京B·66666',
-    driverId: 'd2',
-    driverName: '李师傅',
-    receiptId: 'r1',
-    taskType: 'pickup',
-    origin: { address: '协和医院', lat: 39.9142, lng: 116.4174 },
-    destination: { address: '殡仪馆', lat: 39.9042, lng: 116.4074 },
-    scheduledTime: '2026-06-14 14:30',
-    estimatedDuration: 45,
-    distanceKm: 8.5,
-    status: 'in_progress',
-    route: [
-      { lat: 39.9142, lng: 116.4174 },
-      { lat: 39.92, lng: 116.42 },
-      { lat: 39.915, lng: 116.41 },
-      { lat: 39.9042, lng: 116.4074 },
-    ],
-    trackLog: [],
-  },
-  {
-    id: 't2',
-    vehicleId: 'v5',
-    vehiclePlate: '京E·55555',
-    driverId: 'd5',
-    driverName: '赵师傅',
-    receiptId: 'r2',
-    taskType: 'transfer',
-    origin: { address: '望京医院', lat: 39.9942, lng: 116.4774 },
-    destination: { address: '殡仪馆', lat: 39.9042, lng: 116.4074 },
-    scheduledTime: '2026-06-14 15:00',
-    estimatedDuration: 60,
-    distanceKm: 15.2,
-    status: 'pending',
-    route: [],
-    trackLog: [],
-  },
-  {
-    id: 't3',
-    vehicleId: 'v1',
-    vehiclePlate: '京A·88888',
-    driverId: 'd1',
-    driverName: '张师傅',
-    receiptId: 'r3',
-    taskType: 'delivery',
-    origin: { address: '殡仪馆', lat: 39.9042, lng: 116.4074 },
-    destination: { address: '万安公墓', lat: 39.9842, lng: 116.2974 },
-    scheduledTime: '2026-06-14 10:00',
-    estimatedDuration: 50,
-    distanceKm: 12.8,
-    status: 'completed',
-    route: [],
-    trackLog: [],
-  },
-  {
-    id: 't4',
-    vehicleId: 'v3',
-    vehiclePlate: '京C·12345',
-    driverId: 'd3',
-    driverName: '王师傅',
-    receiptId: 'r4',
-    taskType: 'pickup',
-    origin: { address: '友谊医院', lat: 39.8742, lng: 116.3874 },
-    destination: { address: '殡仪馆', lat: 39.9042, lng: 116.4074 },
-    scheduledTime: '2026-06-14 09:00',
-    estimatedDuration: 30,
-    distanceKm: 5.3,
-    status: 'delayed',
-    route: [],
-    trackLog: [],
-  },
-]
+const addressCoordinates: Record<string, { lat: number; lng: number }> = {
+  '殡仪馆': { lat: 39.9042, lng: 116.4074 },
+  '市医院': { lat: 39.9142, lng: 116.4174 },
+  '火车站': { lat: 39.9087, lng: 116.4205 },
+  '协和医院': { lat: 39.9142, lng: 116.4174 },
+  '望京医院': { lat: 39.9942, lng: 116.4774 },
+  '友谊医院': { lat: 39.8742, lng: 116.3874 },
+  '万安公墓': { lat: 39.9842, lng: 116.2974 },
+  '朝阳区东三环': { lat: 39.9242, lng: 116.4374 },
+  '丰台区南四环': { lat: 39.8842, lng: 116.3674 },
+  '西城区西单': { lat: 39.8742, lng: 116.4174 },
+  '朝阳区望京': { lat: 39.9442, lng: 116.4674 },
+  '维修车间': { lat: 39.9142, lng: 116.3974 },
+  '殡仪馆停车场': { lat: 39.9042, lng: 116.4074 },
+}
 
 const taskTypeLabels: Record<string, string> = {
   pickup: '接运',
@@ -194,24 +54,143 @@ export default function VehiclePage() {
   const [origin, setOrigin] = useState('')
   const [destination, setDestination] = useState('')
   const [scheduledTime, setScheduledTime] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [taskType, setTaskType] = useState<'pickup' | 'transfer' | 'delivery'>('pickup')
 
-  const dispatchSuggestions = useMemo<DispatchSuggestion[]>(() => {
-    const idleVehicles = mockVehicles.filter((v) => v.status === 'idle')
-    return idleVehicles
-      .map((v, idx) => ({
-        vehicleId: v.id,
-        vehiclePlate: v.plateNo,
-        driverName: v.driverName || '未分配',
-        distanceKm: +(2 + idx * 3.5 + Math.random() * 2).toFixed(1),
-        estimatedArrival: `预计 ${10 + idx * 8} 分钟后到达`,
-        currentLoad: v.currentLoad,
-        score: Math.floor(95 - idx * 6 + Math.random() * 5),
-      }))
-      .sort((a, b) => b.score - a.score)
+  const [vehicles, setVehicles] = useState<Vehicle[]>([])
+  const [tasks, setTasks] = useState<VehicleTask[]>([])
+  const [dispatchSuggestions, setDispatchSuggestions] = useState<DispatchSuggestion[]>([])
+
+  const loadVehicles = async () => {
+    try {
+      const data = await vehicleApi.getList()
+      setVehicles(data)
+    } catch (error) {
+      console.error('加载车辆数据失败:', error)
+    }
+  }
+
+  const loadTasks = async () => {
+    try {
+      const data = await vehicleApi.getTasks()
+      setTasks(data)
+    } catch (error) {
+      console.error('加载任务数据失败:', error)
+    }
+  }
+
+  useEffect(() => {
+    loadVehicles()
+    loadTasks()
   }, [])
 
-  const vehicles = mockVehicles
-  const tasks = mockTasks
+  const parseAddress = (address: string): { lat: number; lng: number } | null => {
+    const trimmed = address.trim()
+    if (addressCoordinates[trimmed]) {
+      return addressCoordinates[trimmed]
+    }
+    for (const [key, coords] of Object.entries(addressCoordinates)) {
+      if (trimmed.includes(key) || key.includes(trimmed)) {
+        return coords
+      }
+    }
+    return {
+      lat: 39.9042 + (Math.random() - 0.5) * 0.1,
+      lng: 116.4074 + (Math.random() - 0.5) * 0.1,
+    }
+  }
+
+  const handleGetDispatchSuggest = async () => {
+    if (!origin || !destination) {
+      alert('请输入出发地和目的地')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const originCoords = parseAddress(origin)
+      const destCoords = parseAddress(destination)
+
+      if (!originCoords || !destCoords) {
+        alert('无法解析地址坐标')
+        return
+      }
+
+      const data = await vehicleApi.getDispatchSuggest({
+        originLat: originCoords.lat,
+        originLng: originCoords.lng,
+        destLat: destCoords.lat,
+        destLng: destCoords.lng,
+      })
+
+      const sortedData = [...data].sort((a, b) => b.score - a.score)
+      setDispatchSuggestions(sortedData)
+    } catch (error) {
+      console.error('获取调度推荐失败:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCreateTask = async (suggestion: DispatchSuggestion) => {
+    if (!origin || !destination || !scheduledTime) {
+      alert('请填写完整信息（出发地、目的地、预约时间）')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const originCoords = parseAddress(origin)
+      const destCoords = parseAddress(destination)
+      const vehicle = vehicles.find((v) => v.id === suggestion.vehicleId)
+
+      if (!originCoords || !destCoords || !vehicle) {
+        alert('无法解析地址或找不到车辆')
+        return
+      }
+
+      const taskData = {
+        vehicleId: suggestion.vehicleId,
+        driverId: vehicle.driverId || '',
+        taskType,
+        origin: { address: origin, lat: originCoords.lat, lng: originCoords.lng },
+        destination: { address: destination, lat: destCoords.lat, lng: destCoords.lng },
+        scheduledTime,
+        estimatedDuration: Math.ceil(suggestion.distanceKm * 3),
+        distanceKm: suggestion.distanceKm,
+      }
+
+      await vehicleApi.createTask(taskData)
+
+      await loadVehicles()
+      await loadTasks()
+
+      setDispatchSuggestions([])
+      setOrigin('')
+      setDestination('')
+      setScheduledTime('')
+    } catch (error) {
+      console.error('创建任务失败:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleTaskAction = async (task: VehicleTask, action: 'start' | 'complete' | 'remind') => {
+    try {
+      if (action === 'start') {
+        await vehicleApi.updateTaskStatus(task.id!, { status: 'in_progress' })
+      } else if (action === 'complete') {
+        await vehicleApi.updateTaskStatus(task.id!, { status: 'completed' })
+      } else if (action === 'remind') {
+        await vehicleApi.updateTaskStatus(task.id!, { status: 'delayed' })
+      }
+      await loadVehicles()
+      await loadTasks()
+    } catch (error) {
+      console.error('更新任务状态失败:', error)
+    }
+  }
 
   const mapWidth = 800
   const mapHeight = 400
@@ -334,7 +313,7 @@ export default function VehiclePage() {
                   type="text"
                   value={origin}
                   onChange={(e) => setOrigin(e.target.value)}
-                  placeholder="请输入出发地址"
+                  placeholder="如：殡仪馆、市医院、火车站"
                   className="input-field"
                 />
               </div>
@@ -348,9 +327,25 @@ export default function VehiclePage() {
                   type="text"
                   value={destination}
                   onChange={(e) => setDestination(e.target.value)}
-                  placeholder="请输入目的地址"
+                  placeholder="如：殡仪馆、万安公墓"
                   className="input-field"
                 />
+              </div>
+
+              <div>
+                <label className="label-field flex items-center gap-1">
+                  <Truck className="w-3 h-3" />
+                  任务类型
+                </label>
+                <select
+                  value={taskType}
+                  onChange={(e) => setTaskType(e.target.value as any)}
+                  className="input-field"
+                >
+                  <option value="pickup">接运</option>
+                  <option value="transfer">转运</option>
+                  <option value="delivery">送返</option>
+                </select>
               </div>
 
               <div>
@@ -366,9 +361,13 @@ export default function VehiclePage() {
                 />
               </div>
 
-              <button className="btn-primary w-full">
+              <button
+                onClick={handleGetDispatchSuggest}
+                className="btn-primary w-full"
+                disabled={loading}
+              >
                 <Sparkles className="w-4 h-4 mr-1" />
-                智能匹配车辆
+                {loading ? '匹配中...' : '智能匹配车辆'}
               </button>
             </div>
           </div>
@@ -383,7 +382,11 @@ export default function VehiclePage() {
             </h3>
 
             <div className="space-y-3">
-              {dispatchSuggestions.length === 0 ? (
+              {loading ? (
+                <div className="text-center py-8 text-slate-400 text-sm">
+                  加载中...
+                </div>
+              ) : dispatchSuggestions.length === 0 ? (
                 <div className="text-center py-8 text-slate-400 text-sm">
                   暂无可用车辆推荐
                 </div>
@@ -392,7 +395,7 @@ export default function VehiclePage() {
                   <div
                     key={suggestion.vehicleId}
                     className={cn(
-                      'p-4 rounded-lg border transition-all duration-150 cursor-pointer group',
+                      'p-4 rounded-lg border transition-all duration-150 group',
                       idx === 0
                         ? 'bg-primary-50 border-primary-200 hover:bg-primary-100'
                         : 'bg-slate-50 border-slate-100 hover:bg-slate-100'
@@ -460,17 +463,22 @@ export default function VehiclePage() {
                       </div>
                     </div>
 
-                    {idx === 0 && (
-                      <div className="mt-3 pt-3 border-t border-primary-200 flex items-center justify-between">
+                    <div className="mt-3 pt-3 border-t border-slate-200 flex items-center justify-between">
+                      {idx === 0 && (
                         <span className="text-xs text-primary-600 font-medium flex items-center gap-1">
                           <Sparkles className="w-3 h-3" />
                           最佳推荐
                         </span>
-                        <button className="text-xs text-primary-700 font-medium flex items-center gap-0.5 hover:underline">
-                          派单 <ChevronRight className="w-3 h-3" />
-                        </button>
-                      </div>
-                    )}
+                      )}
+                      {idx !== 0 && <span className="text-xs text-slate-400"></span>}
+                      <button
+                        onClick={() => handleCreateTask(suggestion)}
+                        disabled={loading}
+                        className="text-xs text-primary-700 font-medium flex items-center gap-0.5 hover:underline disabled:opacity-50"
+                      >
+                        派单 <ChevronRight className="w-3 h-3" />
+                      </button>
+                    </div>
                   </div>
                 ))
               )}
@@ -691,19 +699,28 @@ export default function VehiclePage() {
                       </td>
                       <td className="py-3 px-3 text-right">
                         {task.status === 'pending' && (
-                          <button className="btn-primary !py-1.5 !px-3 text-xs">
+                          <button
+                            onClick={() => handleTaskAction(task, 'start')}
+                            className="btn-primary !py-1.5 !px-3 text-xs"
+                          >
                             <Play className="w-3 h-3 mr-1" />
                             出发
                           </button>
                         )}
                         {task.status === 'in_progress' && (
-                          <button className="btn-secondary !py-1.5 !px-3 text-xs">
+                          <button
+                            onClick={() => handleTaskAction(task, 'complete')}
+                            className="btn-secondary !py-1.5 !px-3 text-xs"
+                          >
                             <CheckCircle className="w-3 h-3 mr-1" />
                             完成
                           </button>
                         )}
                         {task.status === 'delayed' && (
-                          <button className="btn-warning !py-1.5 !px-3 text-xs">
+                          <button
+                            onClick={() => handleTaskAction(task, 'remind')}
+                            className="btn-warning !py-1.5 !px-3 text-xs"
+                          >
                             <AlertCircle className="w-3 h-3 mr-1" />
                             催单
                           </button>

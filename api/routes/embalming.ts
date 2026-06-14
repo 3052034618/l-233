@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express'
 import { embalmingTasks, receipts, users, type EmbalmingTask } from '../db/index.js'
+import { transformEmbalmingTask, transformToCamel } from '../utils/transform.js'
 
 const router = Router()
 
@@ -24,9 +25,9 @@ router.get('/tasks', async (req: Request, res: Response): Promise<void> => {
         const receipt = task.receipt_id ? await receipts.getById(task.receipt_id) : null
         const assignee = task.assignee_id ? await users.getById(task.assignee_id) : null
         return {
-          ...task,
-          deceased_name: receipt?.deceased_name,
-          assignee_name: assignee?.name,
+          ...transformEmbalmingTask(task),
+          deceasedName: receipt?.deceased_name,
+          assigneeName: assignee?.name,
         }
       }),
     )
@@ -93,7 +94,7 @@ router.post('/tasks', async (req: Request, res: Response): Promise<void> => {
 
     res.status(201).json({
       success: true,
-      data: newTask,
+      data: transformEmbalmingTask(newTask as EmbalmingTask),
       message: '创建成功',
     })
   } catch (error) {
@@ -148,7 +149,7 @@ router.put('/tasks/:id/status', async (req: Request, res: Response): Promise<voi
 
     res.json({
       success: true,
-      data: updated,
+      data: transformEmbalmingTask(updated!),
       message: '状态更新成功',
     })
   } catch (error) {
@@ -201,8 +202,8 @@ router.put('/tasks/:id/assign', async (req: Request, res: Response): Promise<voi
     res.json({
       success: true,
       data: {
-        ...updated,
-        assignee_name: assignee.name,
+        ...transformEmbalmingTask(updated!),
+        assigneeName: assignee.name,
       },
       message: '分配成功',
     })

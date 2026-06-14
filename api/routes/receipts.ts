@@ -1,5 +1,7 @@
 import { Router, type Request, type Response } from 'express'
 import { receipts, embalmingTasks, type Receipt, type EmbalmingTask } from '../db/index.js'
+import { transformReceipt, transformEmbalmingTask } from '../utils/transform.js'
+import { createNotification } from '../utils/notify.js'
 
 const router = Router()
 
@@ -15,9 +17,10 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
     if (keyword) filters.keyword = keyword
 
     const list = await receipts.getAll(filters)
+    const transformedList = list.map(item => transformReceipt(item))
     res.json({
       success: true,
-      data: list,
+      data: transformedList,
       message: '获取成功',
     })
   } catch (error) {
@@ -87,9 +90,10 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
 
     await receipts.create(newReceipt)
 
+    const createdReceipt = await receipts.getById(id)
     res.status(201).json({
       success: true,
-      data: newReceipt,
+      data: transformReceipt(createdReceipt!),
       message: '创建成功',
     })
   } catch (error) {
@@ -117,7 +121,7 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
 
     res.json({
       success: true,
-      data: receipt,
+      data: transformReceipt(receipt),
       message: '获取成功',
     })
   } catch (error) {
@@ -160,8 +164,8 @@ router.put('/:id/verify', async (req: Request, res: Response): Promise<void> => 
       issues,
     }
 
-    const allValid = deathCertValid && policeRecordValid
-    const newStatus = allValid ? 'verified' : receipt.status
+    const allValid = issues.length === 0
+    const newStatus = allValid ? 'verified' : 'rejected'
 
     await receipts.update(id, {
       status: newStatus,
@@ -170,10 +174,38 @@ router.put('/:id/verify', async (req: Request, res: Response): Promise<void> => 
 
     const updated = await receipts.getById(id)
 
+    if (!allValid) {
+      await createNotification(
+        'receipt',
+        'high',
+        '遗体接收校验不通过，需要退回补正',
+        `${receipt.deceased_name} 的接收申请校验不通过，存在 ${issues.length} 个问题需要处理。`,
+        'dispatcher',
+        id,
+      )
+      await createNotification(
+        'receipt',
+        'normal',
+        '您提交的接收申请需要补充材料',
+        `您提交的 ${receipt.deceased_name} 的接收申请需要补充材料，请及时处理。`,
+        'family',
+        id,
+      )
+    } else {
+      await createNotification(
+        'receipt',
+        'normal',
+        '遗体接收校验通过',
+        `${receipt.deceased_name} 的接收申请已通过校验。`,
+        'dispatcher',
+        id,
+      )
+    }
+
     res.json({
       success: true,
       data: {
-        receipt: updated,
+        receipt: transformReceipt(updated!),
         verification: verificationResult,
       },
       message: allValid ? '校验通过' : '校验发现问题',
@@ -220,7 +252,7 @@ router.put('/:id/reject', async (req: Request, res: Response): Promise<void> => 
 
     res.json({
       success: true,
-      data: updated,
+      data: transformReceipt(updated!),
       message: '已退回补正',
     })
   } catch (error) {
@@ -294,8 +326,8 @@ router.post('/:id/assign-embalming', async (req: Request, res: Response): Promis
     res.status(201).json({
       success: true,
       data: {
-        task: newTask,
-        receipt: updatedReceipt,
+        task: transformEmbalmingTask(newTask as EmbalmingTask),
+        receipt: transformReceipt(updatedReceipt!),
       },
       message: '防腐整容任务分配成功',
     })

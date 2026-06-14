@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   Building2,
   Users,
@@ -16,6 +16,7 @@ import {
   Music,
   Flower2,
   Armchair,
+  RefreshCw,
 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import StatusBadge from '@/components/ui/StatusBadge'
@@ -25,7 +26,7 @@ import {
   type FarewellReservation,
   type HallSuggestion,
 } from '@/lib/api'
-import { cn } from '@/lib/utils'
+import { cn, showToast } from '@/lib/utils'
 
 const START_HOUR = 8
 const END_HOUR = 20
@@ -38,17 +39,21 @@ const facilityIcons: Record<string, typeof Video> = {
   休息椅: Armchair,
 }
 
+function parseDateTime(dateStr: string): Date {
+  return new Date(dateStr.replace(' ', 'T'))
+}
+
 function formatTime(dateStr: string): string {
-  const date = new Date(dateStr)
+  const date = parseDateTime(dateStr)
   return `${date.getHours().toString().padStart(2, '0')}:${date
     .getMinutes()
     .toString()
     .padStart(2, '0')}`
 }
 
-function parseTime(timeStr: string): number {
-  const [h, m] = timeStr.split(':').map(Number)
-  return h + m / 60
+function parseTime(dateStr: string): number {
+  const date = parseDateTime(dateStr)
+  return date.getHours() + date.getMinutes() / 60
 }
 
 function getTodayStr(): string {
@@ -77,6 +82,8 @@ export default function FarewellPage() {
   const [viewMode, setViewMode] = useState<'timeline' | 'calendar'>('timeline')
   const [hoveredReservation, setHoveredReservation] = useState<FarewellReservation | null>(null)
   const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const [formData, setFormData] = useState({
     hallId: '',
@@ -95,14 +102,19 @@ export default function FarewellPage() {
     loadData()
   }, [selectedDate])
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+    setLoading(true)
+    setError(null)
     try {
-      const [hallsData] = await Promise.all([farewellApi.getHalls()])
-      setHalls(hallsData)
+      const hallsData = await farewellApi.getHalls()
+      const validHalls = hallsData.filter(h => 
+        h.name && h.capacity !== undefined && h.facilities && h.floor !== undefined && h.status
+      )
+      setHalls(validHalls)
 
       const schedules: Record<string, FarewellReservation[]> = {}
       await Promise.all(
-        hallsData.map(async (hall) => {
+        validHalls.map(async (hall) => {
           try {
             const res = await farewellApi.getHallSchedule(hall.id, { date: selectedDate })
             schedules[hall.id] = res
@@ -112,20 +124,31 @@ export default function FarewellPage() {
         })
       )
       setReservations(schedules)
+      showToast('数据加载成功', 'success')
     } catch (err) {
+      const message = err instanceof Error ? err.message : '加载数据失败'
+      setError(message)
+      showToast(message, 'error')
       console.error('加载数据失败:', err)
+    } finally {
+      setLoading(false)
     }
-  }
+  }, [selectedDate])
 
   const handleGetSuggestions = async () => {
     if (!formData.attendeeCount || !formData.durationMinutes) return
     try {
+      const preferredTime = `${selectedDate} ${formData.preferredStartTime}`
       const data = await farewellApi.getSuggestion({
         attendeeCount: formData.attendeeCount,
         durationMinutes: formData.durationMinutes,
+        preferredTime,
       })
       setSuggestions(data)
+      showToast('智能推荐完成', 'success')
     } catch (err) {
+      const message = err instanceof Error ? err.message : '获取推荐失败'
+      showToast(message, 'error')
       console.error('获取推荐失败:', err)
     }
   }
@@ -138,10 +161,8 @@ export default function FarewellPage() {
   const handleSubmit = async () => {
     if (!selectedSuggestion || !formData.hallId) return
     try {
-      const hall = halls.find((h) => h.id === formData.hallId)
       await farewellApi.createReservation({
         hallId: formData.hallId,
-        hallName: hall?.name,
         receiptId: 'mock-receipt-' + Date.now(),
         deceasedName: '示例逝者',
         attendeeCount: formData.attendeeCount,
@@ -155,8 +176,11 @@ export default function FarewellPage() {
       setModalOpen(false)
       setSuggestions([])
       setSelectedSuggestion(null)
+      showToast('预约创建成功', 'success')
       loadData()
     } catch (err) {
+      const message = err instanceof Error ? err.message : '创建预约失败'
+      showToast(message, 'error')
       console.error('创建预约失败:', err)
     }
   }
@@ -167,12 +191,34 @@ export default function FarewellPage() {
 
   return (
     <div className="space-y-4 animate-fade-in">
+      {error && (
+        <div className="bg-danger-50 border border-danger-200 rounded-lg p-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-danger-700">
+            <AlertCircle className="w-5 h-5" />
+            <span>{error}</span>
+          </div>
+          <button
+            onClick={loadData}
+            className="text-sm text-danger-600 hover:text-danger-800 font-medium"
+          >
+            重试
+          </button>
+        </div>
+      )}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="page-title">告别厅管理</h1>
           <p className="text-sm text-slate-500 mt-1">管理厅室资源、查看预约排程、智能推荐时段</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={loadData}
+            disabled={loading}
+            className="btn-secondary"
+          >
+            <RefreshCw className={cn('w-4 h-4 mr-1.5', loading && 'animate-spin')} />
+            刷新
+          </button>
           <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-1">
             <button
               onClick={() => setViewMode('timeline')}

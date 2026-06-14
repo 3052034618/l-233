@@ -163,8 +163,8 @@ export default function ReceiptPage() {
   const handleVerify = async (record: DeceasedInfo) => {
     try {
       const data = await receiptApi.verify(record.id!)
-      setVerifyResult(data.verificationResult || null)
-      setCurrentRecord(data)
+      setVerifyResult(data.verification || null)
+      setCurrentRecord(data.receipt)
       setVerifyOpen(true)
       fetchList()
     } catch (e) {
@@ -245,7 +245,7 @@ export default function ReceiptPage() {
     {
       key: 'actions',
       title: '操作',
-      width: 280,
+      width: 320,
       align: 'center',
       render: (r) => (
         <div className="flex items-center justify-center gap-1">
@@ -254,18 +254,18 @@ export default function ReceiptPage() {
             查看
           </button>
           {r.status === 'pending' && (
-            <>
-              <button className="btn-ghost text-success-600 hover:text-success-700 hover:bg-success-50" onClick={() => handleVerify(r)}>
-                <ShieldCheck className="w-4 h-4 mr-1" />
-                校验
-              </button>
-              <button className="btn-ghost text-warning-600 hover:text-warning-700 hover:bg-warning-50" onClick={() => openReject(r)}>
-                <RotateCcw className="w-4 h-4 mr-1" />
-                退回
-              </button>
-            </>
+            <button className="btn-ghost text-success-600 hover:text-success-700 hover:bg-success-50" onClick={() => handleVerify(r)}>
+              <ShieldCheck className="w-4 h-4 mr-1" />
+              校验
+            </button>
           )}
-          {(r.status === 'verified' || r.status === 'processing') && (
+          {(r.status === 'pending' || r.status === 'rejected') && (
+            <button className="btn-ghost text-warning-600 hover:text-warning-700 hover:bg-warning-50" onClick={() => openReject(r)}>
+              <RotateCcw className="w-4 h-4 mr-1" />
+              退回
+            </button>
+          )}
+          {r.status === 'verified' && (
             <button className="btn-ghost text-primary-600 hover:text-primary-700 hover:bg-primary-50" onClick={() => openAssign(r)}>
               <Sparkles className="w-4 h-4 mr-1" />
               分配防腐
@@ -308,7 +308,7 @@ export default function ReceiptPage() {
               <input
                 type="text"
                 className="input-field pl-9"
-                placeholder="搜索逝者姓名、家属姓名、联系电话..."
+                placeholder="搜索逝者姓名、家属姓名、死亡证明号、公安备案号、联系电话..."
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}

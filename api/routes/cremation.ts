@@ -6,6 +6,7 @@ import {
   type CremationTask,
   type CremationFurnace,
 } from '../db/index.js'
+import { transformCremationFurnace, transformCremationTask } from '../utils/transform.js'
 
 const router = Router()
 
@@ -24,9 +25,10 @@ function parseDateTime(dt: string): Date {
 router.get('/furnaces', async (req: Request, res: Response): Promise<void> => {
   try {
     const furnaces = await cremationFurnaces.getAll()
+    const transformedFurnaces = furnaces.map(transformCremationFurnace)
     res.json({
       success: true,
-      data: furnaces,
+      data: transformedFurnaces,
       message: '获取火化炉列表成功',
     })
   } catch (error) {
@@ -43,9 +45,10 @@ router.get('/tasks', async (req: Request, res: Response): Promise<void> => {
     const status = req.query.status as string
     const filters = status ? { status } : undefined
     const tasks = await cremationTasks.getAll(filters)
+    const transformedTasks = tasks.map(item => transformCremationTask(item))
     res.json({
       success: true,
-      data: tasks,
+      data: transformedTasks,
       message: '获取任务队列成功',
     })
   } catch (error) {
@@ -129,9 +132,10 @@ router.post('/tasks/generate-queue', async (req: Request, res: Response): Promis
       furnaceIndex++
     }
 
+    const transformedTasks = createdTasks.map(item => transformCremationTask(item))
     res.status(201).json({
       success: true,
-      data: createdTasks,
+      data: transformedTasks,
       message: `成功生成 ${createdTasks.length} 条火化排程任务`,
     })
   } catch (error) {
@@ -228,7 +232,7 @@ router.put('/tasks/:id/start', async (req: Request, res: Response): Promise<void
 
     res.json({
       success: true,
-      data: updated,
+      data: transformCremationTask(updated!),
       message: '火化任务已开始',
     })
   } catch (error) {
@@ -291,7 +295,7 @@ router.put('/tasks/:id/complete', async (req: Request, res: Response): Promise<v
 
     res.json({
       success: true,
-      data: updated,
+      data: transformCremationTask(updated!),
       message: '火化任务已完成',
     })
   } catch (error) {
@@ -333,7 +337,7 @@ router.post('/tasks/:id/remind', async (req: Request, res: Response): Promise<vo
       res.json({
         success: true,
         data: {
-          task,
+          task: transformCremationTask(task),
           reminded: false,
           message: '任务未超时，无需催办',
         },
@@ -352,7 +356,7 @@ router.post('/tasks/:id/remind', async (req: Request, res: Response): Promise<vo
     res.json({
       success: true,
       data: {
-        task: updated,
+        task: transformCremationTask(updated!),
         reminded: true,
         overdueCount: updated?.overdue || 0,
       },
@@ -421,9 +425,10 @@ router.put('/tasks/reorder', async (req: Request, res: Response): Promise<void> 
       .filter((t) => orders.some((o) => o.id === t.id))
       .sort((a, b) => a.queue_position - b.queue_position)
 
+    const transformedReordered = reordered.map(item => transformCremationTask(item))
     res.json({
       success: true,
-      data: reordered,
+      data: transformedReordered,
       message: '重新排序成功',
     })
   } catch (error) {

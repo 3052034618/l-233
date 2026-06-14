@@ -5,6 +5,7 @@ import {
   type FarewellHall,
   type FarewellReservation,
 } from '../db/index.js'
+import { transformFarewellHall, transformFarewellReservation } from '../utils/transform.js'
 
 const router = Router()
 
@@ -40,9 +41,10 @@ function hasTimeConflict(
 router.get('/halls', async (req: Request, res: Response): Promise<void> => {
   try {
     const halls = await farewellHalls.getAll()
+    const transformedHalls = halls.map(transformFarewellHall)
     res.json({
       success: true,
-      data: halls,
+      data: transformedHalls,
       message: '获取厅室列表成功',
     })
   } catch (error) {
@@ -68,12 +70,13 @@ router.get('/halls/:id/schedule', async (req: Request, res: Response): Promise<v
       return
     }
     const reservations = await farewellReservations.getByHallIdAndDate(id, date)
+    const transformedReservations = reservations.map(item => transformFarewellReservation(item))
     res.json({
       success: true,
       data: {
-        hall,
+        hall: transformFarewellHall(hall!),
         date,
-        reservations,
+        reservations: transformedReservations,
       },
       message: '获取当日排程成功',
     })
@@ -283,7 +286,7 @@ router.post('/reservations', async (req: Request, res: Response): Promise<void> 
 
     res.status(201).json({
       success: true,
-      data: created,
+      data: transformFarewellReservation(created!),
       message: '预约创建成功',
     })
   } catch (error) {
@@ -375,7 +378,7 @@ router.put('/reservations/:id', async (req: Request, res: Response): Promise<voi
 
     res.json({
       success: true,
-      data: updated,
+      data: transformFarewellReservation(updated!),
       message: '预约修改成功',
     })
   } catch (error) {
@@ -406,7 +409,7 @@ router.delete('/reservations/:id', async (req: Request, res: Response): Promise<
 
     res.json({
       success: true,
-      data: cancelled,
+      data: transformFarewellReservation(cancelled!),
       message: '预约已取消',
     })
   } catch (error) {

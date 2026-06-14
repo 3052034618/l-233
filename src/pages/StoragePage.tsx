@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   Box,
   MapPin,
@@ -19,52 +19,10 @@ import {
 import Modal from '@/components/ui/Modal'
 import StatusBadge from '@/components/ui/StatusBadge'
 import { cn } from '@/lib/utils'
-import type { StorageNiche, StorageContract } from '@/lib/api'
+import { storageApi } from '@/lib/api'
+import type { StorageNiche, StorageContract, NicheMatchResult, CertificateData } from '@/lib/api'
 
 type AreaTab = 'A' | 'B' | 'C'
-
-interface NicheMatch extends StorageNiche {
-  remainingYears: number
-}
-
-const generateMockNiches = (area: string): StorageNiche[] => {
-  const niches: StorageNiche[] = []
-  const types: Array<'single' | 'double' | 'family'> = ['single', 'double', 'family']
-  const statuses: Array<'available' | 'occupied' | 'reserved' | 'maintenance'> = [
-    'available',
-    'occupied',
-    'reserved',
-    'maintenance',
-  ]
-  const typePriceMap = { single: 8000, double: 15000, family: 28000 }
-
-  for (let row = 1; row <= 8; row++) {
-    for (let col = 1; col <= 10; col++) {
-      for (let level = 1; level <= 3; level++) {
-        const rand = Math.random()
-        let status: 'available' | 'occupied' | 'reserved' | 'maintenance'
-        if (rand < 0.45) status = 'available'
-        else if (rand < 0.85) status = 'occupied'
-        else if (rand < 0.95) status = 'reserved'
-        else status = 'maintenance'
-
-        const typeIdx = Math.floor(Math.random() * 3)
-
-        niches.push({
-          id: `${area}-${row}-${col}-${level}`,
-          area,
-          row,
-          col,
-          level,
-          type: types[typeIdx],
-          price: typePriceMap[types[typeIdx]] + Math.floor(Math.random() * 2000),
-          status,
-        })
-      }
-    }
-  }
-  return niches
-}
 
 const nicheStatusColors: Record<string, string> = {
   available: 'bg-success-500 hover:bg-success-600 border-success-600',
@@ -83,9 +41,11 @@ export default function StoragePage() {
   const [activeArea, setActiveArea] = useState<AreaTab>('A')
   const [hoveredNiche, setHoveredNiche] = useState<StorageNiche | null>(null)
   const [hoverPosition, setHoverPosition] = useState({ x: 0, y: 0 })
+  const [loading, setLoading] = useState(false)
 
   const [deceasedName, setDeceasedName] = useState('')
   const [preferredType, setPreferredType] = useState<string>('')
+  const [receiptId, setReceiptId] = useState('RC' + Date.now())
 
   const [contractModalOpen, setContractModalOpen] = useState(false)
   const [selectedNiche, setSelectedNiche] = useState<StorageNiche | null>(null)
@@ -98,17 +58,57 @@ export default function StoragePage() {
 
   const [certificateModalOpen, setCertificateModalOpen] = useState(false)
   const [currentContract, setCurrentContract] = useState<StorageContract | null>(null)
+  const [certificateData, setCertificateData] = useState<CertificateData | null>(null)
 
-  const niches = useMemo(() => generateMockNiches(activeArea), [activeArea])
+  const [niches, setNiches] = useState<StorageNiche[]>([])
+  const [matchedNiches, setMatchedNiches] = useState<NicheMatchResult[]>([])
+  const [contracts, setContracts] = useState<StorageContract[]>([])
 
-  const matchedNiches = useMemo<NicheMatch[]>(() => {
-    const available = niches.filter((n) => n.status === 'available')
-    const filtered = preferredType ? available.filter((n) => n.type === preferredType) : available
-    return filtered
-      .slice(0, 6)
-      .map((n) => ({ ...n, remainingYears: 20 + Math.floor(Math.random() * 10) }))
-      .sort((a, b) => a.price - b.price)
-  }, [niches, preferredType])
+  const loadNiches = async (area: string) => {
+    setLoading(true)
+    try {
+      const data = await storageApi.getNiches({ area })
+      setNiches(data)
+    } catch (error) {
+      console.error('加载格位数据失败:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadContracts = async () => {
+    try {
+      const data = await storageApi.getContracts()
+      setContracts(data)
+    } catch (error) {
+      console.error('加载合同数据失败:', error)
+    }
+  }
+
+  const loadMatchedNiches = async () => {
+    if (!receiptId) return
+    try {
+      const params: { receiptId: string; type?: string } = { receiptId }
+      if (preferredType) params.type = preferredType
+      const data = await storageApi.matchNiche(params)
+      setMatchedNiches(data)
+    } catch (error) {
+      console.error('匹配格位失败:', error)
+    }
+  }
+
+  useEffect(() => {
+    loadNiches(activeArea)
+  }, [activeArea])
+
+  useEffect(() => {
+    loadContracts()
+    loadMatchedNiches()
+  }, [])
+
+  useEffect(() => {
+    loadMatchedNiches()
+  }, [preferredType])
 
   const nicheGrid = useMemo(() => {
     const grid: Record<string, StorageNiche[]> = {}
@@ -126,36 +126,39 @@ export default function StoragePage() {
     setContractModalOpen(true)
   }
 
-  const handleCreateContract = () => {
+  const handleCreateContract = async () => {
     if (!selectedNiche) return
-    const startDate = new Date()
-    const endDate = new Date()
-    endDate.setFullYear(endDate.getFullYear() + contractForm.years)
+    setLoading(true)
+    try {
+      const startDate = new Date().toISOString().split('T')[0]
+      const contractData = {
+        nicheId: selectedNiche.id,
+        receiptId,
+        familyName: contractForm.familyName,
+        familyPhone: contractForm.familyPhone,
+        familyIdCard: contractForm.familyIdCard,
+        startDate,
+        years: contractForm.years,
+      }
 
-    const contract: StorageContract = {
-      id: 'CT' + Date.now(),
-      nicheId: selectedNiche.id,
-      nicheInfo: {
-        area: selectedNiche.area,
-        row: selectedNiche.row,
-        col: selectedNiche.col,
-        level: selectedNiche.level,
-        type: selectedNiche.type,
-      },
-      receiptId: 'RC' + Date.now(),
-      deceasedName: deceasedName || '张某某',
-      familyName: contractForm.familyName,
-      familyPhone: contractForm.familyPhone,
-      familyIdCard: contractForm.familyIdCard,
-      startDate: startDate.toISOString().split('T')[0],
-      endDate: endDate.toISOString().split('T')[0],
-      years: contractForm.years,
-      status: 'active',
-      certificateNo: `CERT-${selectedNiche.area}${Date.now().toString().slice(-8)}`,
+      const newContract = await storageApi.createContract(contractData)
+      setCurrentContract(newContract)
+
+      await loadNiches(activeArea)
+      await loadContracts()
+
+      if (newContract.id) {
+        const certData = await storageApi.getCertificate(newContract.id)
+        setCertificateData(certData)
+      }
+
+      setContractModalOpen(false)
+      setCertificateModalOpen(true)
+    } catch (error) {
+      console.error('创建合同失败:', error)
+    } finally {
+      setLoading(false)
     }
-    setCurrentContract(contract)
-    setContractModalOpen(false)
-    setCertificateModalOpen(true)
   }
 
   const handlePrint = () => {
@@ -432,7 +435,11 @@ export default function StoragePage() {
             </div>
 
             <div className="mt-4 space-y-2 max-h-96 overflow-y-auto scrollbar-thin">
-              {matchedNiches.length === 0 ? (
+              {loading ? (
+                <div className="text-center py-8 text-slate-400 text-sm">
+                  加载中...
+                </div>
+              ) : matchedNiches.length === 0 ? (
                 <div className="text-center py-8 text-slate-400 text-sm">
                   暂无匹配的可用格位
                 </div>
@@ -482,13 +489,14 @@ export default function StoragePage() {
             <button
               onClick={() => setContractModalOpen(false)}
               className="btn-secondary"
+              disabled={loading}
             >
               <X className="w-4 h-4 mr-1" />
               取消
             </button>
-            <button onClick={handleCreateContract} className="btn-primary">
+            <button onClick={handleCreateContract} className="btn-primary" disabled={loading}>
               <FileText className="w-4 h-4 mr-1" />
-              生成合同
+              {loading ? '处理中...' : '生成合同'}
             </button>
           </>
         }
@@ -640,7 +648,7 @@ export default function StoragePage() {
           </button>
         }
       >
-        {currentContract && (
+        {(currentContract || certificateData) && (
           <div className="space-y-5">
             <div className="flex flex-col items-center text-center">
               <div className="w-12 h-12 rounded-full bg-primary-700 flex items-center justify-center mb-3">
@@ -650,12 +658,16 @@ export default function StoragePage() {
                 骨灰存放凭证
               </h3>
               <p className="text-sm text-slate-500 mt-1">
-                证书编号：{currentContract.certificateNo}
+                证书编号：{certificateData?.certificateNo || currentContract?.certificateNo}
               </p>
             </div>
 
             <div className="flex justify-center py-4">
-              <QRCodeMock value={currentContract.certificateNo} />
+              {certificateData?.qrCode ? (
+                <QRCodeMock value={certificateData.qrCode} />
+              ) : currentContract?.certificateNo ? (
+                <QRCodeMock value={currentContract.certificateNo} />
+              ) : null}
             </div>
 
             <div className="grid grid-cols-2 gap-4 text-sm">
@@ -664,7 +676,7 @@ export default function StoragePage() {
                 <div className="flex justify-between">
                   <span className="text-slate-500">姓名</span>
                   <span className="text-slate-800 font-medium">
-                    {currentContract.deceasedName}
+                    {certificateData?.deceasedName || currentContract?.deceasedName}
                   </span>
                 </div>
               </div>
@@ -673,13 +685,13 @@ export default function StoragePage() {
                 <div className="flex justify-between">
                   <span className="text-slate-500">姓名</span>
                   <span className="text-slate-800 font-medium">
-                    {currentContract.familyName}
+                    {currentContract?.familyName}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">电话</span>
                   <span className="text-slate-800 font-medium">
-                    {currentContract.familyPhone}
+                    {currentContract?.familyPhone}
                   </span>
                 </div>
               </div>
@@ -691,33 +703,33 @@ export default function StoragePage() {
                 <div className="flex justify-between">
                   <span className="text-slate-500">位置</span>
                   <span className="text-slate-800 font-medium">
-                    {currentContract.nicheInfo?.area}区{' '}
-                    {currentContract.nicheInfo?.row}行
-                    {currentContract.nicheInfo?.col}列{' '}
-                    {currentContract.nicheInfo?.level}层
+                    {(certificateData?.nicheInfo || currentContract?.nicheInfo)?.area}区{' '}
+                    {(certificateData?.nicheInfo || currentContract?.nicheInfo)?.row}行
+                    {(certificateData?.nicheInfo || currentContract?.nicheInfo)?.col}列{' '}
+                    {(certificateData?.nicheInfo || currentContract?.nicheInfo)?.level}层
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">类型</span>
                   <span className="text-slate-800 font-medium">
-                    {nicheTypeLabels[currentContract.nicheInfo?.type || 'single']}
+                    {nicheTypeLabels[(certificateData?.nicheInfo || currentContract?.nicheInfo)?.type || 'single']}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">有效期</span>
                   <span className="text-slate-800 font-medium">
-                    {currentContract.years}年
+                    {currentContract?.years}年
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">状态</span>
-                  <StatusBadge status={currentContract.status} />
+                  <StatusBadge status={currentContract?.status || 'active'} />
                 </div>
               </div>
               <div className="border-t border-primary-200 pt-2 mt-2 flex justify-between">
                 <span className="text-slate-500">有效期限</span>
                 <span className="text-slate-800 font-medium">
-                  {currentContract.startDate} 至 {currentContract.endDate}
+                  {currentContract?.startDate} 至 {currentContract?.endDate}
                 </span>
               </div>
             </div>

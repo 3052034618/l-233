@@ -43,6 +43,9 @@ app.use('/api/reports', reportRoutes)
 app.use('/api/notifications', notificationRoutes)
 app.use('/api/receipts', receiptRoutes)
 app.use('/api/embalming', embalmingRoutes)
+app.use('/api/farewell', farewellRoutes)
+app.use('/api/cremation', cremationRoutes)
+app.use('/api/storage', storageRoutes)
 
 /**
  * health

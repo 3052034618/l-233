@@ -6,6 +6,7 @@ import {
   type StorageNiche,
   type StorageContract,
 } from '../db/index.js'
+import { transformStorageNiche, transformStorageContract, transformToCamel } from '../utils/transform.js'
 
 const router = Router()
 
@@ -32,9 +33,10 @@ router.get('/niches', async (req: Request, res: Response): Promise<void> => {
     if (type) filters.type = type as string
 
     const niches = await storageNiches.getAll(filters)
+    const transformedNiches = niches.map(item => transformStorageNiche(item))
     res.json({
       success: true,
-      data: niches,
+      data: transformedNiches,
       message: '获取格位列表成功',
     })
   } catch (error) {
@@ -61,14 +63,14 @@ router.get('/niches/map', async (req: Request, res: Response): Promise<void> => 
 
     const niches = await storageNiches.getAll({ area: area as string })
 
-    const grouped: Record<string, Record<string, Record<string, StorageNiche[]>>> = {}
+    const grouped: Record<string, Record<string, Record<string, any[]>>> = {}
     for (const niche of niches) {
       if (!grouped[niche.area]) grouped[niche.area] = {}
       if (!grouped[niche.area][niche.row_num]) grouped[niche.area][niche.row_num] = {}
       if (!grouped[niche.area][niche.row_num][niche.col_num]) {
         grouped[niche.area][niche.row_num][niche.col_num] = []
       }
-      grouped[niche.area][niche.row_num][niche.col_num].push(niche)
+      grouped[niche.area][niche.row_num][niche.col_num].push(transformStorageNiche(niche))
     }
 
     const stats = {
@@ -83,7 +85,7 @@ router.get('/niches/map', async (req: Request, res: Response): Promise<void> => 
       success: true,
       data: {
         area,
-        map: grouped,
+        map: transformToCamel(grouped),
         stats,
       },
       message: '获取格位分布图成功',
@@ -137,7 +139,7 @@ router.get('/match', async (req: Request, res: Response): Promise<void> => {
       res.json({
         success: true,
         data: {
-          receipt,
+          receipt: transformToCamel(receipt),
           matches: [],
           message: '暂无可用格位',
         },
@@ -164,14 +166,14 @@ router.get('/match', async (req: Request, res: Response): Promise<void> => {
     scored.sort((a, b) => b.score - a.score)
 
     const matches = scored.slice(0, 5).map((item) => ({
-      ...item.niche,
-      match_score: item.score,
+      ...transformStorageNiche(item.niche),
+      matchScore: item.score,
     }))
 
     res.json({
       success: true,
       data: {
-        receipt,
+        receipt: transformToCamel(receipt),
         matches,
       },
       message: '智能匹配完成',
@@ -274,7 +276,7 @@ router.post('/contracts', async (req: Request, res: Response): Promise<void> => 
 
     res.status(201).json({
       success: true,
-      data: created,
+      data: transformStorageContract(created!),
       message: '合同创建成功',
     })
   } catch (error) {
@@ -304,13 +306,13 @@ router.get('/contracts/:id/certificate', async (req: Request, res: Response): Pr
     const receipt = await receipts.getById(contract.receipt_id)
 
     const certificate = {
-      contract_id: contract.id,
-      certificate_no: contract.certificate_no,
-      qr_code: generateQRCode(contract.certificate_no),
-      deceased_name: receipt?.deceased_name || '',
-      family_name: contract.family_name,
-      family_phone: contract.family_phone,
-      niche_info: niche
+      contractId: contract.id,
+      certificateNo: contract.certificate_no,
+      qrCode: generateQRCode(contract.certificate_no),
+      deceasedName: receipt?.deceased_name || '',
+      familyName: contract.family_name,
+      familyPhone: contract.family_phone,
+      nicheInfo: niche
         ? {
             id: niche.id,
             area: niche.area,
@@ -320,11 +322,11 @@ router.get('/contracts/:id/certificate', async (req: Request, res: Response): Pr
             type: niche.type,
           }
         : null,
-      start_date: contract.start_date,
-      end_date: contract.end_date,
+      startDate: contract.start_date,
+      endDate: contract.end_date,
       years: contract.years,
       status: contract.status,
-      issued_at: new Date().toISOString().slice(0, 10),
+      issuedAt: new Date().toISOString().slice(0, 10),
     }
 
     res.json({

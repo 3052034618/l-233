@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Flame,
   Gauge,
@@ -12,6 +12,7 @@ import {
   Droplets,
   Zap,
   Fuel,
+  AlertCircle,
 } from 'lucide-react'
 import StatusBadge from '@/components/ui/StatusBadge'
 import {
@@ -19,7 +20,7 @@ import {
   type CremationFurnace,
   type CremationTask,
 } from '@/lib/api'
-import { cn } from '@/lib/utils'
+import { cn, showToast } from '@/lib/utils'
 
 const furnaceTypeLabels: Record<string, string> = {
   standard: '标准型',
@@ -39,8 +40,12 @@ const fuelLabels: Record<string, string> = {
   electric: '电力',
 }
 
+function parseDateTime(dateStr: string): Date {
+  return new Date(dateStr.replace(' ', 'T'))
+}
+
 function formatDateTime(dateStr: string): string {
-  const d = new Date(dateStr)
+  const d = parseDateTime(dateStr)
   return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours().toString().padStart(2, '0')}:${d
     .getMinutes()
     .toString()
@@ -50,7 +55,7 @@ function formatDateTime(dateStr: string): string {
 function getTaskProgress(task: CremationTask): number {
   if (task.status === 'completed') return 100
   if (task.status === 'in_progress' && task.startTime) {
-    const elapsed = (Date.now() - new Date(task.startTime).getTime()) / 60000
+    const elapsed = (Date.now() - parseDateTime(task.startTime).getTime()) / 60000
     return Math.min(100, Math.round((elapsed / task.estimatedDuration) * 100))
   }
   if (task.status === 'queued' || task.status === 'pending') return 0
@@ -62,6 +67,7 @@ export default function CremationPage() {
   const [furnaces, setFurnaces] = useState<CremationFurnace[]>([])
   const [tasks, setTasks] = useState<CremationTask[]>([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [, forceUpdate] = useState(0)
 
   useEffect(() => {
@@ -70,25 +76,46 @@ export default function CremationPage() {
     return () => clearInterval(timer)
   }, [])
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+    setLoading(true)
+    setError(null)
     try {
       const [furnacesData, tasksData] = await Promise.all([
         cremationApi.getFurnaces(),
         cremationApi.getTasks(),
       ])
-      setFurnaces(furnacesData)
-      setTasks(tasksData)
+      
+      const validFurnaces = furnacesData.filter(f =>
+        f.name && f.type && f.fuelType && f.fuelLevel !== undefined && f.status
+      )
+      
+      const validTasks = tasksData.filter(t =>
+        t.deceasedName && t.furnaceType && t.queuePosition !== undefined && 
+        t.scheduledTime && t.status && t.estimatedDuration !== undefined
+      )
+      
+      setFurnaces(validFurnaces)
+      setTasks(validTasks)
+      showToast('数据加载成功', 'success')
     } catch (err) {
+      const message = err instanceof Error ? err.message : '加载数据失败'
+      setError(message)
+      showToast(message, 'error')
       console.error('加载数据失败:', err)
+    } finally {
+      setLoading(false)
     }
-  }
+  }, [])
 
   const handleGenerateQueue = async () => {
     setLoading(true)
     try {
-      const data = await cremationApi.generateQueue()
-      setTasks(data)
+      await cremationApi.generateQueue()
+      showToast('排程队列生成成功', 'success')
+      loadData()
     } catch (err) {
+      const message = err instanceof Error ? err.message : '生成排程失败'
+      showToast(message, 'error')
       console.error('生成排程失败:', err)
     } finally {
       setLoading(false)
@@ -97,18 +124,24 @@ export default function CremationPage() {
 
   const handleStartTask = async (id: string) => {
     try {
-      const updated = await cremationApi.startTask(id)
-      setTasks((prev) => prev.map((t) => (t.id === id ? updated : t)))
+      await cremationApi.startTask(id)
+      showToast('火化任务已开始', 'success')
+      loadData()
     } catch (err) {
+      const message = err instanceof Error ? err.message : '开始火化失败'
+      showToast(message, 'error')
       console.error('开始火化失败:', err)
     }
   }
 
   const handleCompleteTask = async (id: string) => {
     try {
-      const updated = await cremationApi.completeTask(id)
-      setTasks((prev) => prev.map((t) => (t.id === id ? updated : t)))
+      await cremationApi.completeTask(id)
+      showToast('火化任务已完成', 'success')
+      loadData()
     } catch (err) {
+      const message = err instanceof Error ? err.message : '完成火化失败'
+      showToast(message, 'error')
       console.error('完成火化失败:', err)
     }
   }
@@ -116,17 +149,26 @@ export default function CremationPage() {
   const handleRemindTask = async (id: string) => {
     try {
       await cremationApi.remindTask(id)
+      showToast('催办成功', 'success')
+      loadData()
     } catch (err) {
+      const message = err instanceof Error ? err.message : '催办失败'
+      showToast(message, 'error')
       console.error('催办失败:', err)
     }
   }
 
   const handleReorder = async () => {
-    const ids = tasks.map((t) => t.id)
     try {
-      const data = await cremationApi.reorderTasks({ taskIds: ids })
-      setTasks(data)
+      const orders = tasks
+        .filter(t => t.status !== 'completed' && t.status !== 'in_progress')
+        .map((t, idx) => ({ id: t.id, queuePosition: idx }))
+      await cremationApi.reorderTasks({ orders })
+      showToast('重新排序成功', 'success')
+      loadData()
     } catch (err) {
+      const message = err instanceof Error ? err.message : '重新排序失败'
+      showToast(message, 'error')
       console.error('重新排序失败:', err)
     }
   }
@@ -154,12 +196,34 @@ export default function CremationPage() {
 
   return (
     <div className="space-y-4 animate-fade-in">
+      {error && (
+        <div className="bg-danger-50 border border-danger-200 rounded-lg p-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-danger-700">
+            <AlertCircle className="w-5 h-5" />
+            <span>{error}</span>
+          </div>
+          <button
+            onClick={loadData}
+            className="text-sm text-danger-600 hover:text-danger-800 font-medium"
+          >
+            重试
+          </button>
+        </div>
+      )}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="page-title">火化管理</h1>
           <p className="text-sm text-slate-500 mt-1">监控火化炉状态、管理排程队列</p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={loadData}
+            disabled={loading}
+            className="btn-secondary"
+          >
+            <RefreshCw className={cn('w-4 h-4 mr-1.5', loading && 'animate-spin')} />
+            刷新
+          </button>
           <button onClick={handleReorder} className="btn-secondary">
             <ArrowUpDown className="w-4 h-4 mr-1.5" />
             重新排序

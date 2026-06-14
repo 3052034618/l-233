@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express'
 import { vehicles, vehicleTasks, type Vehicle, type VehicleTask } from '../db/index.js'
+import { transformVehicle, transformVehicleTask, transformToCamel } from '../utils/transform.js'
 
 const router = Router()
 
@@ -22,9 +23,10 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
       filters.status = status
     }
     const list = await vehicles.getAll(filters)
+    const transformedList = list.map(item => transformVehicle(item))
     res.json({
       success: true,
-      data: list,
+      data: transformedList,
       message: '获取车辆列表成功',
     })
   } catch (error) {
@@ -71,9 +73,9 @@ router.get('/:id/track', async (req: Request, res: Response): Promise<void> => {
     res.json({
       success: true,
       data: {
-        vehicle,
-        currentTask: latestTask || null,
-        track: trackLogs,
+        vehicle: transformVehicle(vehicle!),
+        currentTask: latestTask ? transformVehicleTask(latestTask) : null,
+        track: trackLogs.map((log) => transformToCamel(log)),
       },
       message: '获取车辆轨迹成功',
     })
@@ -137,7 +139,7 @@ router.get('/dispatch-suggest', async (req: Request, res: Response): Promise<voi
       }
       score += Math.max(0, 10 - distanceToOrigin / 5)
       return {
-        ...v,
+        ...transformVehicle(v),
         distanceToOrigin: Number(distanceToOrigin.toFixed(2)),
         totalDistance: Number(totalDistance.toFixed(2)),
         score: Number(score.toFixed(2)),
@@ -198,7 +200,7 @@ router.post('/tasks', async (req: Request, res: Response): Promise<void> => {
     const created = await vehicleTasks.getById(id)
     res.json({
       success: true,
-      data: created,
+      data: transformVehicleTask(created!),
       message: '创建出车任务成功',
     })
   } catch (error) {
@@ -249,7 +251,7 @@ router.put('/tasks/:id/status', async (req: Request, res: Response): Promise<voi
     const updated = await vehicleTasks.getById(id)
     res.json({
       success: true,
-      data: updated,
+      data: transformVehicleTask(updated!),
       message: '更新任务状态成功',
     })
   } catch (error) {
@@ -307,7 +309,7 @@ router.post('/tasks/:id/track', async (req: Request, res: Response): Promise<voi
     })
     res.json({
       success: true,
-      data: newPoint,
+      data: transformToCamel(newPoint),
       message: '上报位置成功',
     })
   } catch (error) {

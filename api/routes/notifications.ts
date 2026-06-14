@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express'
 import { notifications, type Notification } from '../db/index.js'
+import { transformNotification } from '../utils/transform.js'
 
 const router = Router()
 
@@ -66,9 +67,10 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
       filters.isRead = read === 'true' || read === '1' ? 1 : 0
     }
     const list = await notifications.getAll(filters)
+    const transformedList = list.map(item => transformNotification(item))
     res.json({
       success: true,
-      data: list,
+      data: transformedList,
       message: '获取通知列表成功',
     })
   } catch (error) {
@@ -96,7 +98,7 @@ router.put('/:id/read', async (req: Request, res: Response): Promise<void> => {
     const updated = await notifications.getById(id)
     res.json({
       success: true,
-      data: updated,
+      data: transformNotification(updated!),
       message: '标记已读成功',
     })
   } catch (error) {
@@ -171,7 +173,7 @@ router.get('/stream', (req: Request, res: Response): void => {
       }
       sendEvent('notification', {
         success: true,
-        data: mockNotification,
+        data: transformNotification(mockNotification),
         message: '新通知',
         timestamp: new Date().toISOString(),
       })

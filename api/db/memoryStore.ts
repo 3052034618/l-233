@@ -651,7 +651,9 @@ export const receipts = {
         (r) =>
           r.deceased_name.toLowerCase().includes(kw) ||
           r.family_name.toLowerCase().includes(kw) ||
-          r.deceased_id_card.toLowerCase().includes(kw),
+          r.death_certificate_no.toLowerCase().includes(kw) ||
+          r.police_record_no.toLowerCase().includes(kw) ||
+          r.family_phone.toLowerCase().includes(kw),
       )
     }
     return list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
